@@ -15,4 +15,4 @@ Bitrock is an Ethereum IBFT 2.0 Proof of Authority (PoA) side chain with near-ze
 
 ## Support
 
-For support, email into@bit-rock.io.
+For support, email info@bit-rock.io.
