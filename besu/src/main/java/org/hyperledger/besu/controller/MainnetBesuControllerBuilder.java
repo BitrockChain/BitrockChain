@@ -49,23 +49,22 @@ public class MainnetBesuControllerBuilder extends BesuControllerBuilder {
         new PoWMinerExecutor(
             protocolContext,
             protocolSchedule,
-            transactionPool.getPendingTransactions(),
+            transactionPool,
             miningParameters,
             new DefaultBlockScheduler(
                 MainnetBlockHeaderValidator.MINIMUM_SECONDS_SINCE_PARENT,
                 MainnetBlockHeaderValidator.TIMESTAMP_TOLERANCE_S,
                 clock),
             epochCalculator,
-            miningParameters.getPowJobTimeToLive(),
-            miningParameters.getMaxOmmerDepth());
+            ethProtocolManager.ethContext().getScheduler());
 
     final PoWMiningCoordinator miningCoordinator =
         new PoWMiningCoordinator(
             protocolContext.getBlockchain(),
             executor,
             syncState,
-            miningParameters.getRemoteSealersLimit(),
-            miningParameters.getRemoteSealersTimeToLive());
+            miningParameters.getUnstable().getRemoteSealersLimit(),
+            miningParameters.getUnstable().getRemoteSealersTimeToLive());
     miningCoordinator.addMinedBlockObserver(ethProtocolManager);
     miningCoordinator.setStratumMiningEnabled(miningParameters.isStratumMiningEnabled());
     if (miningParameters.isMiningEnabled()) {
@@ -92,7 +91,11 @@ public class MainnetBesuControllerBuilder extends BesuControllerBuilder {
   @Override
   protected ProtocolSchedule createProtocolSchedule() {
     return MainnetProtocolSchedule.fromConfig(
-        configOptionsSupplier.get(), privacyParameters, isRevertReasonEnabled, evmConfiguration);
+        configOptionsSupplier.get(),
+        privacyParameters,
+        isRevertReasonEnabled,
+        evmConfiguration,
+        badBlockManager);
   }
 
   @Override

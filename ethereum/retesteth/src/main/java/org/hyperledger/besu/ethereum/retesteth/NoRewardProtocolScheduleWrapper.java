@@ -17,10 +17,11 @@ package org.hyperledger.besu.ethereum.retesteth;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.BlockValidator;
 import org.hyperledger.besu.ethereum.MainnetBlockValidator;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockImporter;
+import org.hyperledger.besu.ethereum.core.PermissionTransactionFilter;
 import org.hyperledger.besu.ethereum.core.ProcessableBlockHeader;
-import org.hyperledger.besu.ethereum.core.TransactionFilter;
 import org.hyperledger.besu.ethereum.mainnet.BlockProcessor;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockImporter;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockProcessor;
@@ -36,9 +37,12 @@ import java.util.function.Predicate;
 public class NoRewardProtocolScheduleWrapper implements ProtocolSchedule {
 
   private final ProtocolSchedule delegate;
+  private final BadBlockManager badBlockManager;
 
-  NoRewardProtocolScheduleWrapper(final ProtocolSchedule delegate) {
+  NoRewardProtocolScheduleWrapper(
+      final ProtocolSchedule delegate, final BadBlockManager badBlockManager) {
     this.delegate = delegate;
+    this.badBlockManager = badBlockManager;
   }
 
   @Override
@@ -57,12 +61,12 @@ public class NoRewardProtocolScheduleWrapper implements ProtocolSchedule {
             original.getBlockHeaderValidator(),
             original.getBlockBodyValidator(),
             noRewardBlockProcessor,
-            original.getBadBlocksManager());
+            badBlockManager);
     final BlockImporter noRewardBlockImporter = new MainnetBlockImporter(noRewardBlockValidator);
     return new ProtocolSpec(
         original.getName(),
         original.getEvm(),
-        original.getTransactionValidator(),
+        original.getTransactionValidatorFactory(),
         original.getTransactionProcessor(),
         original.getPrivateTransactionProcessor(),
         original.getBlockHeaderValidator(),
@@ -81,12 +85,12 @@ public class NoRewardProtocolScheduleWrapper implements ProtocolSchedule {
         original.getGasCalculator(),
         original.getGasLimitCalculator(),
         original.getFeeMarket(),
-        original.getBadBlocksManager(),
         Optional.empty(),
         original.getWithdrawalsValidator(),
         original.getWithdrawalsProcessor(),
         original.getDepositsValidator(),
-        original.isPoS());
+        original.isPoS(),
+        original.isReplayProtectionSupported());
   }
 
   @Override
@@ -115,13 +119,20 @@ public class NoRewardProtocolScheduleWrapper implements ProtocolSchedule {
   }
 
   @Override
+  public Optional<ScheduledProtocolSpec.Hardfork> hardforkFor(
+      final Predicate<ScheduledProtocolSpec> predicate) {
+    return delegate.hardforkFor(predicate);
+  }
+
+  @Override
   public String listMilestones() {
     return delegate.listMilestones();
   }
 
   @Override
-  public void setTransactionFilter(final TransactionFilter transactionFilter) {
-    delegate.setTransactionFilter(transactionFilter);
+  public void setPermissionTransactionFilter(
+      final PermissionTransactionFilter permissionTransactionFilter) {
+    delegate.setPermissionTransactionFilter(permissionTransactionFilter);
   }
 
   @Override

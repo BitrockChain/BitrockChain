@@ -146,7 +146,7 @@ public abstract class AbstractCallOperation extends AbstractOperation {
    * @param frame The current message frame
    * @return the gas available to execute the child message call
    */
-  protected abstract long gasAvailableForChildCall(MessageFrame frame);
+  public abstract long gasAvailableForChildCall(MessageFrame frame);
 
   /**
    * Returns whether the child message call should be static.
@@ -154,7 +154,9 @@ public abstract class AbstractCallOperation extends AbstractOperation {
    * @param frame The current message frame
    * @return {@code true} if the child message call should be static; otherwise {@code false}
    */
-  protected abstract boolean isStatic(MessageFrame frame);
+  protected boolean isStatic(final MessageFrame frame) {
+    return frame.isStatic();
+  }
 
   @Override
   public OperationResult execute(final MessageFrame frame, final EVM evm) {
@@ -163,7 +165,9 @@ public abstract class AbstractCallOperation extends AbstractOperation {
       return UNDERFLOW_RESPONSE;
     }
 
-    final long cost = cost(frame);
+    final Address to = to(frame);
+    final boolean accountIsWarm = frame.warmUpAddress(to) || gasCalculator().isPrecompile(to);
+    final long cost = cost(frame, accountIsWarm);
     if (frame.getRemainingGas() < cost) {
       return new OperationResult(cost, ExceptionalHaltReason.INSUFFICIENT_GAS);
     }
@@ -171,14 +175,13 @@ public abstract class AbstractCallOperation extends AbstractOperation {
 
     frame.clearReturnData();
 
-    final Address to = to(frame);
     final Account contract = frame.getWorldUpdater().get(to);
 
     final Account account = frame.getWorldUpdater().get(frame.getRecipientAddress());
     final Wei balance = account == null ? Wei.ZERO : account.getBalance();
     // If the call is sending more value than the account has or the message frame is to deep
     // return a failed call
-    if (value(frame).compareTo(balance) > 0 || frame.getMessageStackDepth() >= 1024) {
+    if (value(frame).compareTo(balance) > 0 || frame.getDepth() >= 1024) {
       frame.expandMemory(inputDataOffset(frame), inputDataLength(frame));
       frame.expandMemory(outputDataOffset(frame), outputDataLength(frame));
       frame.incrementRemainingGas(gasAvailableForChildCall(frame) + cost);
@@ -195,32 +198,23 @@ public abstract class AbstractCallOperation extends AbstractOperation {
             : evm.getCode(contract.getCodeHash(), contract.getCode());
 
     if (code.isValid()) {
-      final MessageFrame childFrame =
-          MessageFrame.builder()
-              .type(MessageFrame.Type.MESSAGE_CALL)
-              .messageFrameStack(frame.getMessageFrameStack())
-              .worldUpdater(frame.getWorldUpdater().updater())
-              .initialGas(gasAvailableForChildCall(frame))
-              .address(address(frame))
-              .originator(frame.getOriginatorAddress())
-              .contract(to)
-              .gasPrice(frame.getGasPrice())
-              .inputData(inputData)
-              .sender(sender(frame))
-              .value(value(frame))
-              .apparentValue(apparentValue(frame))
-              .code(code)
-              .blockValues(frame.getBlockValues())
-              .depth(frame.getMessageStackDepth() + 1)
-              .isStatic(isStatic(frame))
-              .completer(child -> complete(frame, child))
-              .miningBeneficiary(frame.getMiningBeneficiary())
-              .blockHashLookup(frame.getBlockHashLookup())
-              .maxStackSize(frame.getMaxStackSize())
-              .build();
+      // frame addition is automatically handled by parent messageFrameStack
+      MessageFrame.builder()
+          .parentMessageFrame(frame)
+          .type(MessageFrame.Type.MESSAGE_CALL)
+          .initialGas(gasAvailableForChildCall(frame))
+          .address(address(frame))
+          .contract(to)
+          .inputData(inputData)
+          .sender(sender(frame))
+          .value(value(frame))
+          .apparentValue(apparentValue(frame))
+          .code(code)
+          .isStatic(isStatic(frame))
+          .completer(child -> complete(frame, child))
+          .build();
       frame.incrementRemainingGas(cost);
 
-      frame.getMessageFrameStack().addFirst(childFrame);
       frame.setState(MessageFrame.State.CODE_SUSPENDED);
       return new OperationResult(cost, null, 0);
     } else {
@@ -233,8 +227,43 @@ public abstract class AbstractCallOperation extends AbstractOperation {
    *
    * @param frame the frame
    * @return the long
+   * @deprecated use the form with the `accountIsWarm` boolean
    */
-  protected abstract long cost(final MessageFrame frame);
+  @Deprecated(since = "24.2.0", forRemoval = true)
+  @SuppressWarnings("InlineMeSuggester") // downstream users override, so @InlineMe is inappropriate
+  public long cost(final MessageFrame frame) {
+    return cost(frame, true);
+  }
+
+  /**
+   * Calculates Cost.
+   *
+   * @param frame the frame
+   * @param accountIsWarm whether the contract being called is "warm" as per EIP-2929.
+   * @return the long
+   */
+  public long cost(final MessageFrame frame, final boolean accountIsWarm) {
+    final long stipend = gas(frame);
+    final long inputDataOffset = inputDataOffset(frame);
+    final long inputDataLength = inputDataLength(frame);
+    final long outputDataOffset = outputDataOffset(frame);
+    final long outputDataLength = outputDataLength(frame);
+    final Account recipient = frame.getWorldUpdater().get(address(frame));
+    final Address to = to(frame);
+    GasCalculator gasCalculator = gasCalculator();
+
+    return gasCalculator.callOperationGasCost(
+        frame,
+        stipend,
+        inputDataOffset,
+        inputDataLength,
+        outputDataOffset,
+        outputDataLength,
+        value(frame),
+        recipient,
+        to,
+        accountIsWarm);
+  }
 
   /**
    * Complete.
@@ -259,6 +288,7 @@ public abstract class AbstractCallOperation extends AbstractOperation {
     frame.setReturnData(outputData);
     frame.addLogs(childFrame.getLogs());
     frame.addSelfDestructs(childFrame.getSelfDestructs());
+    frame.addCreates(childFrame.getCreates());
     frame.incrementGasRefund(childFrame.getGasRefund());
 
     final long gasRemaining = childFrame.getRemainingGas();
@@ -266,7 +296,6 @@ public abstract class AbstractCallOperation extends AbstractOperation {
 
     frame.popStackItems(getStackItemsConsumed());
     if (childFrame.getState() == MessageFrame.State.COMPLETED_SUCCESS) {
-      frame.mergeWarmedUpFields(childFrame);
       frame.pushStackItem(SUCCESS_STACK_ITEM);
     } else {
       frame.pushStackItem(FAILURE_STACK_ITEM);

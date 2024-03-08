@@ -24,6 +24,7 @@ import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.MutableWorldState;
 import org.hyperledger.besu.ethereum.eth.manager.EthContext;
 import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManager;
@@ -38,7 +39,7 @@ import org.hyperledger.besu.ethereum.eth.sync.fastsync.worldstate.NodeDataReques
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueSegmentIdentifier;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueStorageProviderBuilder;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
 import org.hyperledger.besu.metrics.ObservableMetricsSystem;
@@ -105,7 +106,8 @@ public class WorldStateDownloaderBenchmark {
 
     final StorageProvider storageProvider =
         createKeyValueStorageProvider(tempDir, tempDir.resolve("database"));
-    worldStateStorage = storageProvider.createWorldStateStorage(DataStorageFormat.FOREST);
+    worldStateStorage =
+        storageProvider.createWorldStateStorage(DataStorageConfiguration.DEFAULT_CONFIG);
 
     pendingRequests = new InMemoryTasksPriorityQueues<>();
     worldStateDownloader =
@@ -159,6 +161,9 @@ public class WorldStateDownloaderBenchmark {
   }
 
   private StorageProvider createKeyValueStorageProvider(final Path dataDir, final Path dbDir) {
+    final var besuConfiguration = new BesuConfigurationImpl();
+    besuConfiguration.init(
+        dataDir, dbDir, DataStorageConfiguration.DEFAULT_CONFIG, MiningParameters.newDefault());
     return new KeyValueStorageProviderBuilder()
         .withStorageFactory(
             new RocksDBKeyValueStorageFactory(
@@ -170,7 +175,7 @@ public class WorldStateDownloaderBenchmark {
                         DEFAULT_IS_HIGH_SPEC),
                 Arrays.asList(KeyValueSegmentIdentifier.values()),
                 RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS))
-        .withCommonConfiguration(new BesuConfigurationImpl(dataDir, dbDir))
+        .withCommonConfiguration(besuConfiguration)
         .withMetricsSystem(new NoOpMetricsSystem())
         .build();
   }

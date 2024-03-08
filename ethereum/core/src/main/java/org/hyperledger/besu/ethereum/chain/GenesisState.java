@@ -15,10 +15,12 @@
 package org.hyperledger.besu.ethereum.chain;
 
 import static java.util.Collections.emptyList;
+import static org.hyperledger.besu.ethereum.trie.common.GenesisWorldStateProvider.createGenesisWorldState;
 
 import org.hyperledger.besu.config.GenesisAllocation;
 import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.datatypes.Address;
+import org.hyperledger.besu.datatypes.BlobGas;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.core.Block;
@@ -31,13 +33,10 @@ import org.hyperledger.besu.ethereum.core.MutableWorldState;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ScheduleBasedBlockHeaderFunctions;
-import org.hyperledger.besu.ethereum.storage.keyvalue.WorldStateKeyValueStorage;
-import org.hyperledger.besu.ethereum.storage.keyvalue.WorldStatePreimageKeyValueStorage;
-import org.hyperledger.besu.ethereum.worldstate.DefaultMutableWorldState;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
 import org.hyperledger.besu.evm.account.MutableAccount;
 import org.hyperledger.besu.evm.log.LogsBloomFilter;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
-import org.hyperledger.besu.services.kvstore.InMemoryKeyValueStorage;
 
 import java.math.BigInteger;
 import java.util.HashMap;
@@ -47,11 +46,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.base.MoreObjects;
 import org.apache.tuweni.bytes.Bytes;
+import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.units.bigints.UInt256;
 
 public final class GenesisState {
@@ -76,6 +75,23 @@ public final class GenesisState {
   }
 
   /**
+   * Construct a {@link GenesisState} from a JSON string.
+   *
+   * @param dataStorageConfiguration A {@link DataStorageConfiguration} describing the storage
+   *     configuration
+   * @param json A JSON string describing the genesis block
+   * @param protocolSchedule A protocol Schedule associated with
+   * @return A new {@link GenesisState}.
+   */
+  public static GenesisState fromJson(
+      final DataStorageConfiguration dataStorageConfiguration,
+      final String json,
+      final ProtocolSchedule protocolSchedule) {
+    return fromConfig(
+        dataStorageConfiguration, GenesisConfigFile.fromConfig(json), protocolSchedule);
+  }
+
+  /**
    * Construct a {@link GenesisState} from a JSON object.
    *
    * @param config A {@link GenesisConfigFile} describing the genesis block.
@@ -84,11 +100,29 @@ public final class GenesisState {
    */
   public static GenesisState fromConfig(
       final GenesisConfigFile config, final ProtocolSchedule protocolSchedule) {
-    final List<GenesisAccount> genesisAccounts =
-        parseAllocations(config).collect(Collectors.toList());
+    return fromConfig(DataStorageConfiguration.DEFAULT_CONFIG, config, protocolSchedule);
+  }
+
+  /**
+   * Construct a {@link GenesisState} from a JSON object.
+   *
+   * @param dataStorageConfiguration A {@link DataStorageConfiguration} describing the storage
+   *     configuration
+   * @param config A {@link GenesisConfigFile} describing the genesis block.
+   * @param protocolSchedule A protocol Schedule associated with
+   * @return A new {@link GenesisState}.
+   */
+  public static GenesisState fromConfig(
+      final DataStorageConfiguration dataStorageConfiguration,
+      final GenesisConfigFile config,
+      final ProtocolSchedule protocolSchedule) {
+    final List<GenesisAccount> genesisAccounts = parseAllocations(config).toList();
     final Block block =
         new Block(
-            buildHeader(config, calculateGenesisStateHash(genesisAccounts), protocolSchedule),
+            buildHeader(
+                config,
+                calculateGenesisStateHash(dataStorageConfiguration, genesisAccounts),
+                protocolSchedule),
             buildBody(config));
     return new GenesisState(block, genesisAccounts);
   }
@@ -122,7 +156,7 @@ public final class GenesisState {
     final WorldUpdater updater = target.updater();
     genesisAccounts.forEach(
         genesisAccount -> {
-          final MutableAccount account = updater.getOrCreate(genesisAccount.address).getMutable();
+          final MutableAccount account = updater.getOrCreate(genesisAccount.address);
           account.setNonce(genesisAccount.nonce);
           account.setBalance(genesisAccount.balance);
           account.setCode(genesisAccount.code);
@@ -132,15 +166,15 @@ public final class GenesisState {
     target.persist(rootHeader);
   }
 
-  private static Hash calculateGenesisStateHash(final List<GenesisAccount> genesisAccounts) {
-    final WorldStateKeyValueStorage stateStorage =
-        new WorldStateKeyValueStorage(new InMemoryKeyValueStorage());
-    final WorldStatePreimageKeyValueStorage preimageStorage =
-        new WorldStatePreimageKeyValueStorage(new InMemoryKeyValueStorage());
-    final MutableWorldState worldState =
-        new DefaultMutableWorldState(stateStorage, preimageStorage);
-    writeAccountsTo(worldState, genesisAccounts, null);
-    return worldState.rootHash();
+  private static Hash calculateGenesisStateHash(
+      final DataStorageConfiguration dataStorageConfiguration,
+      final List<GenesisAccount> genesisAccounts) {
+    try (var worldState = createGenesisWorldState(dataStorageConfiguration)) {
+      writeAccountsTo(worldState, genesisAccounts, null);
+      return worldState.rootHash();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private static BlockHeader buildHeader(
@@ -167,6 +201,10 @@ public final class GenesisState {
         .blockHeaderFunctions(ScheduleBasedBlockHeaderFunctions.create(protocolSchedule))
         .baseFee(genesis.getGenesisBaseFeePerGas().orElse(null))
         .withdrawalsRoot(isShanghaiAtGenesis(genesis) ? Hash.EMPTY_TRIE_HASH : null)
+        .blobGasUsed(isCancunAtGenesis(genesis) ? parseBlobGasUsed(genesis) : null)
+        .excessBlobGas(isCancunAtGenesis(genesis) ? parseExcessBlobGas(genesis) : null)
+        .parentBeaconBlockRoot(
+            (isCancunAtGenesis(genesis) ? parseParentBeaconBlockRoot(genesis) : null))
         .depositsRoot(isExperimentalEipsTimeAtGenesis(genesis) ? Hash.EMPTY_TRIE_HASH : null)
         .buildBlockHeader();
   }
@@ -217,26 +255,67 @@ public final class GenesisState {
     return withNiceErrorMessage("nonce", genesis.getNonce(), GenesisState::parseUnsignedLong);
   }
 
+  private static long parseBlobGasUsed(final GenesisConfigFile genesis) {
+    return withNiceErrorMessage(
+        "blobGasUsed", genesis.getBlobGasUsed(), GenesisState::parseUnsignedLong);
+  }
+
+  private static BlobGas parseExcessBlobGas(final GenesisConfigFile genesis) {
+    long excessBlobGas =
+        withNiceErrorMessage(
+            "excessBlobGas", genesis.getExcessBlobGas(), GenesisState::parseUnsignedLong);
+    return BlobGas.of(excessBlobGas);
+  }
+
+  private static Bytes32 parseParentBeaconBlockRoot(final GenesisConfigFile genesis) {
+    return withNiceErrorMessage(
+        "parentBeaconBlockRoot", genesis.getParentBeaconBlockRoot(), Bytes32::fromHexString);
+  }
+
   private static long parseUnsignedLong(final String value) {
-    String nonce = value.toLowerCase(Locale.US);
-    if (nonce.startsWith("0x")) {
-      nonce = nonce.substring(2);
+    String v = value.toLowerCase(Locale.US);
+    if (v.startsWith("0x")) {
+      v = v.substring(2);
     }
-    return Long.parseUnsignedLong(nonce, 16);
+    return Long.parseUnsignedLong(v, 16);
   }
 
   private static boolean isShanghaiAtGenesis(final GenesisConfigFile genesis) {
     final OptionalLong shanghaiTimestamp = genesis.getConfigOptions().getShanghaiTime();
     if (shanghaiTimestamp.isPresent()) {
-      return shanghaiTimestamp.getAsLong() == genesis.getTimestamp();
+      return genesis.getTimestamp() >= shanghaiTimestamp.getAsLong();
     }
-    return false;
+    return isCancunAtGenesis(genesis);
+  }
+
+  private static boolean isCancunAtGenesis(final GenesisConfigFile genesis) {
+    final OptionalLong cancunTimestamp = genesis.getConfigOptions().getCancunTime();
+    if (cancunTimestamp.isPresent()) {
+      return genesis.getTimestamp() >= cancunTimestamp.getAsLong();
+    }
+    return isPragueAtGenesis(genesis);
+  }
+
+  private static boolean isPragueAtGenesis(final GenesisConfigFile genesis) {
+    final OptionalLong pragueTimestamp = genesis.getConfigOptions().getPragueTime();
+    if (pragueTimestamp.isPresent()) {
+      return genesis.getTimestamp() >= pragueTimestamp.getAsLong();
+    }
+    return isFutureEipsTimeAtGenesis(genesis);
+  }
+
+  private static boolean isFutureEipsTimeAtGenesis(final GenesisConfigFile genesis) {
+    final OptionalLong futureEipsTime = genesis.getConfigOptions().getFutureEipsTime();
+    if (futureEipsTime.isPresent()) {
+      return genesis.getTimestamp() >= futureEipsTime.getAsLong();
+    }
+    return isExperimentalEipsTimeAtGenesis(genesis);
   }
 
   private static boolean isExperimentalEipsTimeAtGenesis(final GenesisConfigFile genesis) {
     final OptionalLong experimentalEipsTime = genesis.getConfigOptions().getExperimentalEipsTime();
     if (experimentalEipsTime.isPresent()) {
-      return experimentalEipsTime.getAsLong() == genesis.getTimestamp();
+      return genesis.getTimestamp() >= experimentalEipsTime.getAsLong();
     }
     return false;
   }

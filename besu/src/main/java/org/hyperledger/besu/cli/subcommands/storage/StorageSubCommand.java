@@ -45,7 +45,11 @@ import picocli.CommandLine.Spec;
     description = "This command provides storage related actions.",
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider.class,
-    subcommands = {StorageSubCommand.RevertVariablesStorage.class})
+    subcommands = {
+      StorageSubCommand.RevertVariablesStorage.class,
+      RocksDbSubCommand.class,
+      TrieLogSubCommand.class
+    })
 public class StorageSubCommand implements Runnable {
 
   /** The constant COMMAND_NAME. */
@@ -53,7 +57,7 @@ public class StorageSubCommand implements Runnable {
 
   @SuppressWarnings("unused")
   @ParentCommand
-  private BesuCommand parentCommand;
+  BesuCommand besuCommand;
 
   @SuppressWarnings("unused")
   @Spec
@@ -99,7 +103,9 @@ public class StorageSubCommand implements Runnable {
     }
 
     private StorageProvider getStorageProvider() {
-      return parentCommand.parentCommand.getStorageProvider();
+      // init collection of ignorable segments
+      parentCommand.besuCommand.setIgnorableStorageSegments();
+      return parentCommand.besuCommand.getStorageProvider();
     }
 
     private void revert(final StorageProvider storageProvider) {

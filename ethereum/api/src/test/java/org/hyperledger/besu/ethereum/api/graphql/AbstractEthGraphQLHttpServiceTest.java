@@ -14,11 +14,15 @@
  */
 package org.hyperledger.besu.ethereum.api.graphql;
 
+import static org.mockito.Mockito.when;
+
+import org.hyperledger.besu.datatypes.TransactionType;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.ProtocolContext;
 import org.hyperledger.besu.ethereum.api.ImmutableApiConfiguration;
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.blockcreation.PoWMiningCoordinator;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.BlockchainSetupUtil;
 import org.hyperledger.besu.ethereum.core.DefaultSyncStatus;
@@ -27,16 +31,14 @@ import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.eth.EthProtocol;
 import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.eth.transactions.PendingTransaction;
-import org.hyperledger.besu.ethereum.eth.transactions.PendingTransactions;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ValidationResult;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.Capability;
 import org.hyperledger.besu.ethereum.transaction.TransactionInvalidReason;
 import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.plugin.data.SyncStatus;
-import org.hyperledger.besu.plugin.data.TransactionType;
-import org.hyperledger.besu.testutil.BlockTestUtil;
 
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -47,16 +49,15 @@ import graphql.GraphQL;
 import io.vertx.core.Vertx;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
 public abstract class AbstractEthGraphQLHttpServiceTest {
-  @ClassRule public static final TemporaryFolder folder = new TemporaryFolder();
+  @TempDir private Path tempDir;
 
   private static BlockchainSetupUtil blockchainSetupUtil;
 
@@ -71,35 +72,30 @@ public abstract class AbstractEthGraphQLHttpServiceTest {
   final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
   protected static final MediaType GRAPHQL = MediaType.parse("application/graphql; charset=utf-8");
 
-  @BeforeClass
+  @BeforeAll
   public static void setupConstants() {
-    blockchainSetupUtil =
-        BlockchainSetupUtil.createForEthashChain(
-            BlockTestUtil.getHiveTestChainResources(), DataStorageFormat.BONSAI);
+    blockchainSetupUtil = BlockchainSetupUtil.forHiveTesting(DataStorageFormat.BONSAI);
     blockchainSetupUtil.importAllBlocks();
   }
 
-  @Before
+  @BeforeEach
   public void setupTest() throws Exception {
     final Synchronizer synchronizerMock = Mockito.mock(Synchronizer.class);
     final SyncStatus status = new DefaultSyncStatus(1, 2, 3, Optional.of(4L), Optional.of(5L));
-    Mockito.when(synchronizerMock.getSyncStatus()).thenReturn(Optional.of(status));
+    when(synchronizerMock.getSyncStatus()).thenReturn(Optional.of(status));
 
     final PoWMiningCoordinator miningCoordinatorMock = Mockito.mock(PoWMiningCoordinator.class);
-    Mockito.when(miningCoordinatorMock.getMinTransactionGasPrice()).thenReturn(Wei.of(16));
+    when(miningCoordinatorMock.getMinTransactionGasPrice()).thenReturn(Wei.of(16));
 
     final TransactionPool transactionPoolMock = Mockito.mock(TransactionPool.class);
 
-    Mockito.when(transactionPoolMock.addTransactionViaApi(ArgumentMatchers.any(Transaction.class)))
+    when(transactionPoolMock.addTransactionViaApi(ArgumentMatchers.any(Transaction.class)))
         .thenReturn(ValidationResult.valid());
     // nonce too low tests uses a tx with nonce=16
-    Mockito.when(
-            transactionPoolMock.addTransactionViaApi(
-                ArgumentMatchers.argThat(tx -> tx.getNonce() == 16)))
+    when(transactionPoolMock.addTransactionViaApi(
+            ArgumentMatchers.argThat(tx -> tx.getNonce() == 16)))
         .thenReturn(ValidationResult.invalid(TransactionInvalidReason.NONCE_TOO_LOW));
-    final PendingTransactions pendingTransactionsMock = Mockito.mock(PendingTransactions.class);
-    Mockito.when(transactionPoolMock.getPendingTransactions()).thenReturn(pendingTransactionsMock);
-    Mockito.when(pendingTransactionsMock.getPendingTransactions())
+    Mockito.when(transactionPoolMock.getPendingTransactions())
         .thenReturn(
             Collections.singleton(
                 new PendingTransaction.Local(
@@ -113,14 +109,18 @@ public abstract class AbstractEthGraphQLHttpServiceTest {
     final MutableBlockchain blockchain = blockchainSetupUtil.getBlockchain();
     ProtocolContext context =
         new ProtocolContext(
-            blockchain, blockchainSetupUtil.getWorldArchive(), null, Optional.empty());
+            blockchain,
+            blockchainSetupUtil.getWorldArchive(),
+            null,
+            Optional.empty(),
+            new BadBlockManager());
     final BlockchainQueries blockchainQueries =
         new BlockchainQueries(
             context.getBlockchain(),
             context.getWorldStateArchive(),
             Optional.empty(),
             Optional.empty(),
-            ImmutableApiConfiguration.builder().gasPriceMin(0).build());
+            ImmutableApiConfiguration.builder().gasPriceMinSupplier(() -> 0).build());
 
     final Set<Capability> supportedCapabilities = new HashSet<>();
     supportedCapabilities.add(EthProtocol.ETH62);
@@ -135,7 +135,7 @@ public abstract class AbstractEthGraphQLHttpServiceTest {
     service =
         new GraphQLHttpService(
             vertx,
-            folder.newFolder().toPath(),
+            tempDir,
             config,
             graphQL,
             Map.of(
@@ -148,7 +148,9 @@ public abstract class AbstractEthGraphQLHttpServiceTest {
                 GraphQLContextType.MINING_COORDINATOR,
                 miningCoordinatorMock,
                 GraphQLContextType.SYNCHRONIZER,
-                synchronizerMock),
+                synchronizerMock,
+                GraphQLContextType.GAS_CAP,
+                0L),
             Mockito.mock(EthScheduler.class));
     service.start().join();
 
@@ -156,7 +158,7 @@ public abstract class AbstractEthGraphQLHttpServiceTest {
     baseUrl = service.url() + "/graphql/";
   }
 
-  @After
+  @AfterEach
   public void shutdownServer() {
     client.dispatcher().executorService().shutdown();
     client.connectionPool().evictAll();

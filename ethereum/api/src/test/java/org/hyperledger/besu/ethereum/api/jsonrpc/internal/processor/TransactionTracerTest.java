@@ -16,12 +16,16 @@ package org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.ethereum.ProtocolContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.ImmutableTransactionTraceParams;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
@@ -35,6 +39,7 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.FeeMarket;
 import org.hyperledger.besu.ethereum.processing.TransactionProcessingResult;
 import org.hyperledger.besu.ethereum.vm.DebugOperationTracer;
+import org.hyperledger.besu.evm.gascalculator.GasCalculator;
 import org.hyperledger.besu.evm.tracing.StandardJsonTracer;
 import org.hyperledger.besu.evm.worldstate.StackedUpdater;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
@@ -49,20 +54,23 @@ import java.util.List;
 import java.util.Optional;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class TransactionTracerTest {
 
-  @Rule public TemporaryFolder traceDir = new TemporaryFolder();
+  @TempDir private Path traceDir;
 
   @Mock private ProtocolSchedule protocolSchedule;
+  @Mock private ProtocolContext protocolContext;
   @Mock private Blockchain blockchain;
 
   @Mock private BlockHeader blockHeader;
@@ -78,12 +86,14 @@ public class TransactionTracerTest {
   @Mock private DebugOperationTracer tracer;
 
   @Mock private ProtocolSpec protocolSpec;
+  @Mock private GasCalculator gasCalculator;
 
   @Mock private Tracer.TraceableState mutableWorldState;
 
   @Mock private MainnetTransactionProcessor transactionProcessor;
 
   private TransactionTracer transactionTracer;
+  private final BadBlockManager badBlockManager = new BadBlockManager();
 
   private final Hash transactionHash =
       Hash.fromHexString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -98,9 +108,10 @@ public class TransactionTracerTest {
   private final Hash invalidBlockHash =
       Hash.fromHexString("1111111111111111111111111111111111111111111111111111111111111111");
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
-    transactionTracer = new TransactionTracer(new BlockReplay(protocolSchedule, blockchain));
+    transactionTracer =
+        new TransactionTracer(new BlockReplay(protocolSchedule, protocolContext, blockchain));
     when(transaction.getHash()).thenReturn(transactionHash);
     when(otherTransaction.getHash()).thenReturn(otherTransactionHash);
     when(blockHeader.getNumber()).thenReturn(12L);
@@ -111,7 +122,9 @@ public class TransactionTracerTest {
     when(protocolSpec.getMiningBeneficiaryCalculator()).thenReturn(BlockHeader::getCoinbase);
     when(protocolSpec.getFeeMarket()).thenReturn(FeeMarket.london(0L));
     when(blockchain.getChainHeadHeader()).thenReturn(blockHeader);
-    when(protocolSpec.getBadBlocksManager()).thenReturn(new BadBlockManager());
+    when(protocolSpec.getGasCalculator()).thenReturn(gasCalculator);
+    when(protocolContext.getBadBlockManager()).thenReturn(badBlockManager);
+    lenient().when(gasCalculator.computeExcessBlobGas(anyLong(), anyInt())).thenReturn(0L);
   }
 
   @Test
@@ -230,7 +243,7 @@ public class TransactionTracerTest {
             mutableWorldState,
             blockHash,
             Optional.of(ImmutableTransactionTraceParams.builder().build()),
-            traceDir.getRoot().toPath());
+            traceDir);
 
     assertThat(transactionTraces).isEmpty();
   }
@@ -273,7 +286,7 @@ public class TransactionTracerTest {
             mutableWorldState,
             blockHash,
             Optional.of(ImmutableTransactionTraceParams.builder().build()),
-            traceDir.getRoot().toPath());
+            traceDir);
 
     assertThat(transactionTraces.size()).isEqualTo(1);
     assertThat(Files.readString(Path.of(transactionTraces.get(0))))

@@ -14,8 +14,6 @@
  */
 package org.hyperledger.besu.ethereum.vm;
 
-import static org.apache.tuweni.bytes.Bytes32.leftPad;
-
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.debug.TraceFrame;
@@ -23,6 +21,7 @@ import org.hyperledger.besu.ethereum.debug.TraceOptions;
 import org.hyperledger.besu.evm.ModificationNotAllowedException;
 import org.hyperledger.besu.evm.frame.ExceptionalHaltReason;
 import org.hyperledger.besu.evm.frame.MessageFrame;
+import org.hyperledger.besu.evm.operation.AbstractCallOperation;
 import org.hyperledger.besu.evm.operation.Operation;
 import org.hyperledger.besu.evm.operation.Operation.OperationResult;
 import org.hyperledger.besu.evm.tracing.OperationTracer;
@@ -36,43 +35,60 @@ import java.util.OptionalLong;
 import java.util.TreeMap;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.units.bigints.UInt256;
 
 public class DebugOperationTracer implements OperationTracer {
 
   private final TraceOptions options;
+
+  /**
+   * A flag to indicate if call operations should trace just the operation cost (false, Geth style,
+   * debug_ series RPCs) or the operation cost and all gas granted to the child call (true, Parity
+   * style, trace_ series RPCs)
+   */
+  private final boolean recordChildCallGas;
+
   private List<TraceFrame> traceFrames = new ArrayList<>();
   private TraceFrame lastFrame;
 
-  private Optional<Bytes32[]> preExecutionStack;
+  private Optional<Bytes[]> preExecutionStack;
   private long gasRemaining;
   private Bytes inputData;
   private int pc;
+  private int depth;
 
-  public DebugOperationTracer(final TraceOptions options) {
+  /**
+   * Creates the operation tracer.
+   *
+   * @param options The options, as passed in through the RPC
+   * @param recordChildCallGas A flag on whether to produce geth style (true) or parity style
+   *     (false) gas amounts for call operations
+   */
+  public DebugOperationTracer(final TraceOptions options, final boolean recordChildCallGas) {
     this.options = options;
+    this.recordChildCallGas = recordChildCallGas;
   }
 
   @Override
   public void tracePreExecution(final MessageFrame frame) {
     preExecutionStack = captureStack(frame);
     gasRemaining = frame.getRemainingGas();
-    if (lastFrame != null && frame.getMessageStackDepth() > lastFrame.getDepth())
+    if (lastFrame != null && frame.getDepth() > lastFrame.getDepth())
       inputData = frame.getInputData().copy();
     else inputData = frame.getInputData();
     pc = frame.getPC();
+    depth = frame.getDepth();
   }
 
   @Override
   public void tracePostExecution(final MessageFrame frame, final OperationResult operationResult) {
     final Operation currentOperation = frame.getCurrentOperation();
-    final int depth = frame.getMessageStackDepth();
     final String opcode = currentOperation.getName();
+    final int opcodeNumber = (opcode != null) ? currentOperation.getOpcode() : Integer.MAX_VALUE;
     final WorldUpdater worldUpdater = frame.getWorldUpdater();
     final Bytes outputData = frame.getOutputData();
     final Optional<Bytes[]> memory = captureMemory(frame);
-    final Optional<Bytes32[]> stackPostExecution = captureStack(frame);
+    final Optional<Bytes[]> stackPostExecution = captureStack(frame);
 
     if (lastFrame != null) {
       lastFrame.setGasRemainingPostExecution(gasRemaining);
@@ -80,17 +96,21 @@ public class DebugOperationTracer implements OperationTracer {
     final Optional<Map<UInt256, UInt256>> storage = captureStorage(frame);
     final Optional<Map<Address, Wei>> maybeRefunds =
         frame.getRefunds().isEmpty() ? Optional.empty() : Optional.of(frame.getRefunds());
+    long thisGasCost = operationResult.getGasCost();
+    if (recordChildCallGas && currentOperation instanceof AbstractCallOperation) {
+      thisGasCost += frame.getMessageFrameStack().getFirst().getRemainingGas();
+    }
     lastFrame =
         new TraceFrame(
             pc,
             Optional.of(opcode),
+            opcodeNumber,
             gasRemaining,
-            operationResult.getGasCost() == 0
-                ? OptionalLong.empty()
-                : OptionalLong.of(operationResult.getGasCost()),
+            thisGasCost == 0 ? OptionalLong.empty() : OptionalLong.of(thisGasCost),
             frame.getGasRefund(),
             depth,
-            Optional.ofNullable(operationResult.getHaltReason()),
+            Optional.ofNullable(operationResult.getHaltReason())
+                .or(frame::getExceptionalHaltReason),
             frame.getRecipientAddress(),
             frame.getApparentValue(),
             inputData,
@@ -119,10 +139,11 @@ public class DebugOperationTracer implements OperationTracer {
           new TraceFrame(
               frame.getPC(),
               Optional.empty(),
+              Integer.MAX_VALUE,
               frame.getRemainingGas(),
               OptionalLong.empty(),
               frame.getGasRefund(),
-              frame.getMessageStackDepth(),
+              frame.getDepth(),
               Optional.empty(),
               frame.getRecipientAddress(),
               frame.getValue(),
@@ -165,10 +186,11 @@ public class DebugOperationTracer implements OperationTracer {
                 new TraceFrame(
                     frame.getPC(),
                     Optional.empty(),
+                    Integer.MAX_VALUE,
                     frame.getRemainingGas(),
                     OptionalLong.empty(),
                     frame.getGasRefund(),
-                    frame.getMessageStackDepth(),
+                    frame.getDepth(),
                     Optional.of(exceptionalHaltReason),
                     frame.getRecipientAddress(),
                     frame.getValue(),
@@ -198,11 +220,8 @@ public class DebugOperationTracer implements OperationTracer {
     try {
       final Map<UInt256, UInt256> storageContents =
           new TreeMap<>(
-              frame
-                  .getWorldUpdater()
-                  .getAccount(frame.getRecipientAddress())
-                  .getMutable()
-                  .getUpdatedStorage());
+              frame.getWorldUpdater().getAccount(frame.getRecipientAddress()).getUpdatedStorage());
+
       return Optional.of(storageContents);
     } catch (final ModificationNotAllowedException e) {
       return Optional.of(new TreeMap<>());
@@ -220,15 +239,15 @@ public class DebugOperationTracer implements OperationTracer {
     return Optional.of(memoryContents);
   }
 
-  private Optional<Bytes32[]> captureStack(final MessageFrame frame) {
+  private Optional<Bytes[]> captureStack(final MessageFrame frame) {
     if (!options.isStackEnabled()) {
       return Optional.empty();
     }
 
-    final Bytes32[] stackContents = new Bytes32[frame.stackSize()];
+    final Bytes[] stackContents = new Bytes[frame.stackSize()];
     for (int i = 0; i < stackContents.length; i++) {
       // Record stack contents in reverse
-      stackContents[i] = leftPad(frame.getStackItem(stackContents.length - i - 1));
+      stackContents[i] = frame.getStackItem(stackContents.length - i - 1);
     }
     return Optional.of(stackContents);
   }

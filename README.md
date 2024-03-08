@@ -1,18 +1,72 @@
+# Besu Ethereum Client
+ [![CircleCI](https://circleci.com/gh/hyperledger/besu/tree/main.svg?style=svg)](https://circleci.com/gh/hyperledger/besu/tree/main)
+ [![Documentation Status](https://readthedocs.org/projects/hyperledger-besu/badge/?version=latest)](https://besu.hyperledger.org/en/latest/?badge=latest)
+ [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3174/badge)](https://bestpractices.coreinfrastructure.org/projects/3174)
+ [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/hyperledger/besu/blob/main/LICENSE)
+ [![Discord](https://img.shields.io/discord/905194001349627914?logo=Hyperledger&style=plastic)](https://discord.gg/hyperledger)
+ [![Twitter Follow](https://img.shields.io/twitter/follow/HyperledgerBesu)](https://twitter.com/HyperledgerBesu)
 
-# Bitrock Blockchain
+[Download](https://hyperledger.jfrog.io/artifactory/besu-binaries/besu/)
 
-Bitrock is an Ethereum IBFT 2.0 Proof of Authority (PoA) side chain with near-zero native gas fees and lightning speed block times. On top of having a cost-effective, scalable, and high speed infrastructure, Bitrock will have a unique multichain (DEX) swap where cryptocurrencies can be traded directly on their native chains without the need to use DEX's native to those chains, hold native chain tokens, or pay gas fees in those native tokens. All of the former can be handled through Bitrock's native multichain DEX, and all gas is equalized from other chains and paid in BITROCK-20.
+Besu is an Apache 2.0 licensed, MainNet compatible, Ethereum client written in Java.
+
+## Useful Links
+
+* [Besu User Documentation]
+* [Besu Issues]
+* [Besu Wiki](https://wiki.hyperledger.org/display/BESU/Hyperledger+Besu)
+* [How to Contribute to Besu](https://wiki.hyperledger.org/display/BESU/How+to+Contribute)
+* [Besu Roadmap & Planning](https://wiki.hyperledger.org/pages/viewpage.action?pageId=24781786)
 
 
-## Running a Node
+## Issues 
 
-[Documentation](https://docs.bit-rock.io/get-started/bitrock-blockchain)
+Besu issues are tracked [in the github issues tab][Besu Issues].
+See our [guidelines](https://wiki.hyperledger.org/display/BESU/Issues) for more details on searching and creating issues.
+
+If you have any questions, queries or comments, [Besu channel on Hyperledger Discord] is the place to find us.
 
 
-## 🔗 Social
-[![twitter](https://img.shields.io/badge/twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/bitrockchain)
+## Besu Users
+
+To install the Besu binary, follow [these instructions](https://besu.hyperledger.org/public-networks/get-started/install/binary-distribution).    
+
+## Besu Developers
+
+* [Contributing Guidelines]
+* [Coding Conventions](https://wiki.hyperledger.org/display/BESU/Coding+Conventions)
+* [Command Line Interface (CLI) Style Guide](https://wiki.hyperledger.org/display/BESU/Besu+CLI+Style+Guide)
+* [Besu User Documentation] for running and using Besu
 
 
-## Support
+### Development
 
-For support, email info@bit-rock.io.
+Instructions for how to get started with developing on the Besu codebase. Please also read the
+[wiki](https://wiki.hyperledger.org/display/BESU/Pull+Requests) for more details on how to submit a pull request (PR).  
+
+* [Checking Out and Building](https://wiki.hyperledger.org/display/BESU/Building+from+source)
+* [Running Developer Builds](https://wiki.hyperledger.org/display/BESU/Building+from+source#running-developer-builds)
+* [Code Coverage](https://wiki.hyperledger.org/display/BESU/Code+coverage)
+* [Logging](https://wiki.hyperledger.org/display/BESU/Logging) or the [Documentation's Logging section](https://besu.hyperledger.org/public-networks/how-to/monitor/logging)
+
+
+## Release Notes
+
+[Release Notes](CHANGELOG.md)
+
+## Special thanks
+
+YourKit for providing us with a free profiler open source license. 
+
+YourKit supports open source projects with innovative and intelligent tools
+for monitoring and profiling Java and .NET applications.
+YourKit is the creator of <a href="https://www.yourkit.com/java/profiler/">YourKit Java Profiler</a>,
+<a href="https://www.yourkit.com/.net/profiler/">YourKit .NET Profiler</a>,
+and <a href="https://www.yourkit.com/youmonitor/">YourKit YouMonitor</a>.
+
+![YourKit Logo](https://www.yourkit.com/images/yklogo.png)
+
+[Besu Issues]: https://github.com/hyperledger/besu/issues
+[Besu User Documentation]: https://besu.hyperledger.org
+[Besu channel on Hyperledger Discord]: https://discord.gg/hyperledger
+[Contributing Guidelines]: CONTRIBUTING.md

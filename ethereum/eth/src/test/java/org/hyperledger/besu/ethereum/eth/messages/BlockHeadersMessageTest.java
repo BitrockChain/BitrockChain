@@ -15,6 +15,7 @@
 package org.hyperledger.besu.ethereum.eth.messages;
 
 import org.hyperledger.besu.config.GenesisConfigFile;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.difficulty.fixed.FixedDifficultyProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockHeaderFunctions;
@@ -33,7 +34,7 @@ import java.util.List;
 import com.google.common.io.Resources;
 import org.apache.tuweni.bytes.Bytes;
 import org.assertj.core.api.Assertions;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Tests for {@link BlockHeadersMessage}. */
 public final class BlockHeadersMessageTest {
@@ -63,7 +64,8 @@ public final class BlockHeadersMessageTest {
             FixedDifficultyProtocolSchedule.create(
                 GenesisConfigFile.development().getConfigOptions(),
                 false,
-                EvmConfiguration.DEFAULT));
+                EvmConfiguration.DEFAULT,
+                new BadBlockManager()));
 
     for (int i = 0; i < 50; ++i) {
       Assertions.assertThat(readHeaders.get(i)).isEqualTo(headers.get(i));

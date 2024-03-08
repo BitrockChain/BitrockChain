@@ -26,6 +26,7 @@ import org.hyperledger.besu.config.StubGenesisConfigOptions;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.BlockProcessingOutputs;
 import org.hyperledger.besu.ethereum.BlockProcessingResult;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
@@ -38,7 +39,7 @@ import org.hyperledger.besu.ethereum.eth.manager.RespondingEthPeer;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockHeaderFunctions;
 import org.hyperledger.besu.ethereum.mainnet.MainnetProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.referencetests.ReferenceTestWorldState;
+import org.hyperledger.besu.ethereum.referencetests.ForestReferenceTestWorldState;
 import org.hyperledger.besu.services.kvstore.InMemoryKeyValueStorage;
 
 import java.nio.charset.StandardCharsets;
@@ -49,14 +50,17 @@ import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nonnull;
 
 import org.assertj.core.api.Assertions;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class ForwardSyncStepTest {
 
   public static final int REMOTE_HEIGHT = 50;
@@ -70,14 +74,14 @@ public class ForwardSyncStepTest {
   private RespondingEthPeer peer;
 
   private final ProtocolSchedule protocolSchedule =
-      MainnetProtocolSchedule.fromConfig(new StubGenesisConfigOptions());
+      MainnetProtocolSchedule.fromConfig(new StubGenesisConfigOptions(), new BadBlockManager());
   private MutableBlockchain localBlockchain;
   GenericKeyValueStorageFacade<Hash, BlockHeader> headersStorage;
   GenericKeyValueStorageFacade<Hash, Block> blocksStorage;
   GenericKeyValueStorageFacade<Hash, Hash> chainStorage;
   GenericKeyValueStorageFacade<String, BlockHeader> sessionDataStorage;
 
-  @Before
+  @BeforeEach
   public void setup() {
     headersStorage =
         new GenericKeyValueStorageFacade<>(
@@ -135,7 +139,8 @@ public class ForwardSyncStepTest {
               return new BlockProcessingResult(
                   Optional.of(
                       new BlockProcessingOutputs(
-                          new ReferenceTestWorldState(), blockDataGenerator.receipts(block))));
+                          ForestReferenceTestWorldState.create(Collections.emptyMap()),
+                          blockDataGenerator.receipts(block))));
             });
   }
 

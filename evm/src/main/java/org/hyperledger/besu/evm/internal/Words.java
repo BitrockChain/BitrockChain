@@ -16,6 +16,8 @@ package org.hyperledger.besu.evm.internal;
 
 import org.hyperledger.besu.datatypes.Address;
 
+import java.math.BigInteger;
+
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.bytes.MutableBytes;
@@ -117,10 +119,12 @@ public interface Words {
    * @return value of a plus b if no over/underflows or Long.MAX_VALUE/Long.MIN_VALUE otherwise
    */
   static long clampedAdd(final long a, final long b) {
-    try {
-      return Math.addExact(a, b);
-    } catch (final ArithmeticException ae) {
+    long r = a + b;
+    if (((a ^ r) & (b ^ r)) < 0) {
+      // out of bounds, clamp it!
       return a > 0 ? Long.MAX_VALUE : Long.MIN_VALUE;
+    } else {
+      return r;
     }
   }
 
@@ -132,26 +136,15 @@ public interface Words {
    * @return value of a times b if no over/underflows or Long.MAX_VALUE/Long.MIN_VALUE otherwise
    */
   static long clampedMultiply(final long a, final long b) {
-    try {
-      return Math.multiplyExact(a, b);
-    } catch (final ArithmeticException ae) {
+    long r = a * b;
+    long ax = Math.abs(a);
+    long ay = Math.abs(b);
+    if (((ax | ay) >>> 31 != 0)
+        && (((b != 0) && (r / b != a)) || (a == Long.MIN_VALUE && b == -1))) {
+      // out of bounds, clamp it!
       return ((a ^ b) < 0) ? Long.MIN_VALUE : Long.MAX_VALUE;
-    }
-  }
-
-  /**
-   * Multiplies a and b, but if an underflow/overflow occurs return the Integer max/min value
-   *
-   * @param a first value
-   * @param b second value
-   * @return value of a times b if no over/underflows or Integer.MAX_VALUE/Integer.MIN_VALUE
-   *     otherwise
-   */
-  static int clampedMultiply(final int a, final int b) {
-    try {
-      return Math.multiplyExact(a, b);
-    } catch (final ArithmeticException ae) {
-      return ((a ^ b) < 0) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+    } else {
+      return r;
     }
   }
 
@@ -221,5 +214,30 @@ public interface Words {
         (byte) (value >>> 16),
         (byte) (value >>> 8),
         (byte) value);
+  }
+
+  /**
+   * Utility to decode string to unsigned long
+   *
+   * @param number to be decoded
+   * @return long value, unsigned
+   */
+  static long decodeUnsignedLong(final String number) {
+    String parsable = number;
+    int radix = 10;
+    if (number.startsWith("0x")) {
+      radix = 16;
+      parsable = number.substring(2);
+    } else if (!number.matches("\\d+")) {
+      // presume naked hex
+      radix = 16;
+    }
+
+    BigInteger bi = new BigInteger(parsable, radix);
+    if (bi.bitCount() > 64) {
+      throw new NumberFormatException("Number larger than uint64");
+    }
+
+    return bi.longValue();
   }
 }

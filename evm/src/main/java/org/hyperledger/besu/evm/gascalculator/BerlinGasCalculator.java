@@ -38,15 +38,18 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
   // new constants for EIP-2929
   private static final long COLD_SLOAD_COST = 2100L;
   private static final long COLD_ACCOUNT_ACCESS_COST = 2600L;
+
   /** Warm storage read, defined in EIP-2929 */
   protected static final long WARM_STORAGE_READ_COST = 100L;
 
   private static final long ACCESS_LIST_ADDRESS_COST = 2400L;
+
   /** The constant ACCESS_LIST_STORAGE_COST. */
   protected static final long ACCESS_LIST_STORAGE_COST = 1900L;
 
   // redefinitions for EIP-2929
   private static final long SLOAD_GAS = WARM_STORAGE_READ_COST;
+
   /** The constant SSTORE_RESET_GAS. */
   protected static final long SSTORE_RESET_GAS = 5000L - COLD_SLOAD_COST;
 
@@ -56,6 +59,7 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
 
   /** The constant SSTORE_SET_GAS_LESS_SLOAD_GAS. */
   protected static final long SSTORE_SET_GAS_LESS_SLOAD_GAS = SSTORE_SET_GAS - SLOAD_GAS;
+
   /** The constant SSTORE_RESET_GAS_LESS_SLOAD_GAS. */
   protected static final long SSTORE_RESET_GAS_LESS_SLOAD_GAS = SSTORE_RESET_GAS - SLOAD_GAS;
 
@@ -141,6 +145,7 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
 
   // Redefined costs from EIP-2929
   @Override
+  @SuppressWarnings("java:S5738")
   public long callOperationGasCost(
       final MessageFrame frame,
       final long stipend,
@@ -151,6 +156,32 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
       final Wei transferValue,
       final Account recipient,
       final Address to) {
+    return callOperationGasCost(
+        frame,
+        stipend,
+        inputDataOffset,
+        inputDataLength,
+        outputDataOffset,
+        outputDataLength,
+        transferValue,
+        recipient,
+        to,
+        frame.warmUpAddress(to) || isPrecompile(to));
+  }
+
+  // Redefined costs from EIP-2929
+  @Override
+  public long callOperationGasCost(
+      final MessageFrame frame,
+      final long stipend,
+      final long inputDataOffset,
+      final long inputDataLength,
+      final long outputDataOffset,
+      final long outputDataLength,
+      final Wei transferValue,
+      final Account recipient,
+      final Address to,
+      final boolean accountIsWarm) {
     final long baseCost =
         super.callOperationGasCost(
             frame,
@@ -161,8 +192,8 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
             outputDataLength,
             transferValue,
             recipient,
-            to);
-    final boolean accountIsWarm = frame.warmUpAddress(to) || isPrecompile(to);
+            to,
+            true); // we want the "warmed price" as we will charge for warming ourselves
     return clampedAdd(
         baseCost, accountIsWarm ? getWarmStorageReadCost() : getColdAccountAccessCost());
   }
@@ -247,15 +278,26 @@ public class BerlinGasCalculator extends IstanbulGasCalculator {
         BigIntegerModularExponentiationPrecompiledContract.modulusLength(input);
     final long exponentOffset =
         clampedAdd(BigIntegerModularExponentiationPrecompiledContract.BASE_OFFSET, baseLength);
+
+    long multiplicationComplexity = (Math.max(modulusLength, baseLength) + 7L) / 8L;
+    multiplicationComplexity =
+        Words.clampedMultiply(multiplicationComplexity, multiplicationComplexity);
+
+    if (multiplicationComplexity == 0) {
+      return 200;
+    } else if (multiplicationComplexity > 0) {
+      long maxExponentLength = Long.MAX_VALUE / multiplicationComplexity * 3 / 8;
+      if (exponentLength > maxExponentLength) {
+        return Long.MAX_VALUE;
+      }
+    }
+
     final long firstExponentBytesCap =
         Math.min(exponentLength, ByzantiumGasCalculator.MAX_FIRST_EXPONENT_BYTES);
     final BigInteger firstExpBytes =
         BigIntegerModularExponentiationPrecompiledContract.extractParameter(
             input, clampedToInt(exponentOffset), clampedToInt(firstExponentBytesCap));
     final long adjustedExponentLength = adjustedExponentLength(exponentLength, firstExpBytes);
-    long multiplicationComplexity = (Math.max(modulusLength, baseLength) + 7L) / 8L;
-    multiplicationComplexity =
-        Words.clampedMultiply(multiplicationComplexity, multiplicationComplexity);
 
     long gasRequirement =
         clampedMultiply(multiplicationComplexity, Math.max(adjustedExponentLength, 1L));

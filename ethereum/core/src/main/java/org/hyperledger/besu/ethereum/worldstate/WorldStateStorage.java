@@ -27,11 +27,20 @@ import org.apache.tuweni.bytes.Bytes32;
 
 public interface WorldStateStorage {
 
-  Optional<Bytes> getCode(Bytes32 codeHash, Hash accountHash);
+  Optional<Bytes> getCode(Hash codeHash, Hash accountHash);
 
   Optional<Bytes> getAccountStateTrieNode(Bytes location, Bytes32 nodeHash);
 
   Optional<Bytes> getAccountStorageTrieNode(Hash accountHash, Bytes location, Bytes32 nodeHash);
+
+  /**
+   * This method allows obtaining a TrieNode in an unsafe manner, without verifying the consistency
+   * of the obtained node. Checks such as node hash verification are not performed here.
+   *
+   * @param key of the trie node
+   * @return value of the trie node
+   */
+  Optional<Bytes> getTrieNodeUnsafe(Bytes key);
 
   Optional<Bytes> getNodeData(Bytes location, Bytes32 hash);
 
@@ -89,7 +98,7 @@ public interface WorldStateStorage {
 
   interface Updater {
 
-    Updater putCode(Hash accountHash, Bytes32 nodeHash, Bytes code);
+    Updater putCode(Hash accountHash, Hash nodeHash, Bytes code);
 
     default Updater putCode(final Hash accountHash, final Bytes code) {
       // Skip the hash calculation for empty code

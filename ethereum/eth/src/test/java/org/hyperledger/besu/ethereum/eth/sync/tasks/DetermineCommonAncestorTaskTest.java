@@ -28,6 +28,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
@@ -59,8 +60,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.assertj.core.api.Assertions;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class DetermineCommonAncestorTaskTest {
 
@@ -74,7 +75,7 @@ public class DetermineCommonAncestorTaskTest {
   private EthContext ethContext;
   private ProtocolContext protocolContext;
 
-  @Before
+  @BeforeEach
   public void setup() {
     localGenesisBlock = blockDataGenerator.genesisBlock();
     localBlockchain = createInMemoryBlockchain(localGenesisBlock);
@@ -88,7 +89,8 @@ public class DetermineCommonAncestorTaskTest {
             EthProtocolConfiguration.defaultConfig());
     ethContext = ethProtocolManager.ethContext();
     protocolContext =
-        new ProtocolContext(localBlockchain, worldStateArchive, null, Optional.empty());
+        new ProtocolContext(
+            localBlockchain, worldStateArchive, null, Optional.empty(), new BadBlockManager());
   }
 
   @Test

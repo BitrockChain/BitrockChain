@@ -24,6 +24,7 @@ import org.hyperledger.besu.ethereum.blockcreation.MiningCoordinator;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
+import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +42,7 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
    * @param prevRandao the prev randao
    * @param feeRecipient the fee recipient
    * @param withdrawals the optional list of withdrawals
+   * @param parentBeaconBlockRoot optional root hash of the parent beacon block
    * @return the payload identifier
    */
   PayloadIdentifier preparePayload(
@@ -48,7 +50,8 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
       final Long timestamp,
       final Bytes32 prevRandao,
       final Address feeRecipient,
-      final Optional<List<Withdrawal>> withdrawals);
+      final Optional<List<Withdrawal>> withdrawals,
+      final Optional<Bytes32> parentBeaconBlockRoot);
 
   @Override
   default boolean isCompatibleWithEngineApi() {
@@ -99,19 +102,11 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
   Optional<Hash> getLatestValidAncestor(BlockHeader blockheader);
 
   /**
-   * Check if latest valid ancestor descends from terminal.
-   *
-   * @param blockHeader the block header
-   * @return the boolean
-   */
-  boolean latestValidAncestorDescendsFromTerminal(final BlockHeader blockHeader);
-
-  /**
-   * Is descendant of.
+   * Checks if a block descends from another
    *
    * @param ancestorBlock the ancestor block
-   * @param newBlock the new block
-   * @return the boolean
+   * @param newBlock the block we want to check if it is descendant
+   * @return true if newBlock is a descendant of ancestorBlock
    */
   boolean isDescendantOf(final BlockHeader ancestorBlock, final BlockHeader newBlock);
 
@@ -176,6 +171,13 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
    * @param payloadId the payload id
    */
   void finalizeProposalById(final PayloadIdentifier payloadId);
+
+  /**
+   * Return the scheduler
+   *
+   * @return the instance of the scheduler
+   */
+  EthScheduler getEthScheduler();
 
   /** The type Forkchoice result. */
   class ForkchoiceResult {

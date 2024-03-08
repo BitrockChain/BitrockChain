@@ -22,15 +22,18 @@ import org.hyperledger.besu.config.MergeConfigOptions;
 import org.hyperledger.besu.crypto.KeyPair;
 import org.hyperledger.besu.crypto.KeyPairUtil;
 import org.hyperledger.besu.datatypes.Address;
+import org.hyperledger.besu.ethereum.api.ApiConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.ipc.JsonRpcIpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.websocket.WebSocketConfiguration;
 import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
+import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.p2p.config.NetworkingConfiguration;
 import org.hyperledger.besu.ethereum.p2p.rlpx.connections.netty.TLSConfiguration;
 import org.hyperledger.besu.ethereum.permissioning.PermissioningConfiguration;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
 import org.hyperledger.besu.metrics.prometheus.MetricsConfiguration;
 import org.hyperledger.besu.pki.config.PkiKeyStoreConfiguration;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.Condition;
@@ -99,6 +102,7 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
 
   private final String name;
   private MiningParameters miningParameters;
+  private TransactionPoolConfiguration txPoolConfiguration;
   private final List<String> runCommand;
   private PrivacyParameters privacyParameters = PrivacyParameters.DEFAULT;
   private final JsonRpcConfiguration jsonRpcConfiguration;
@@ -106,7 +110,9 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   private final WebSocketConfiguration webSocketConfiguration;
   private final JsonRpcIpcConfiguration jsonRpcIpcConfiguration;
   private final MetricsConfiguration metricsConfiguration;
+  private final DataStorageConfiguration dataStorageConfiguration;
   private Optional<PermissioningConfiguration> permissioningConfiguration;
+  private final ApiConfiguration apiConfiguration;
   private final GenesisConfigurationProvider genesisConfigProvider;
   private final boolean devMode;
   private final NetworkName network;
@@ -133,12 +139,15 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
       final String name,
       final Optional<Path> dataPath,
       final MiningParameters miningParameters,
+      final TransactionPoolConfiguration txPoolConfiguration,
       final JsonRpcConfiguration jsonRpcConfiguration,
       final Optional<JsonRpcConfiguration> engineRpcConfiguration,
       final WebSocketConfiguration webSocketConfiguration,
       final JsonRpcIpcConfiguration jsonRpcIpcConfiguration,
       final MetricsConfiguration metricsConfiguration,
       final Optional<PermissioningConfiguration> permissioningConfiguration,
+      final ApiConfiguration apiConfiguration,
+      final DataStorageConfiguration dataStorageConfiguration,
       final Optional<String> keyfilePath,
       final boolean devMode,
       final NetworkName network,
@@ -181,12 +190,15 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
         () -> this.keyPair = KeyPairUtil.loadKeyPair(homeDirectory));
     this.name = name;
     this.miningParameters = miningParameters;
+    this.txPoolConfiguration = txPoolConfiguration;
     this.jsonRpcConfiguration = jsonRpcConfiguration;
     this.engineRpcConfiguration = engineRpcConfiguration;
     this.webSocketConfiguration = webSocketConfiguration;
     this.jsonRpcIpcConfiguration = jsonRpcIpcConfiguration;
     this.metricsConfiguration = metricsConfiguration;
     this.permissioningConfiguration = permissioningConfiguration;
+    this.apiConfiguration = apiConfiguration;
+    this.dataStorageConfiguration = dataStorageConfiguration;
     this.genesisConfigProvider = genesisConfigProvider;
     this.devMode = devMode;
     this.network = network;
@@ -657,12 +669,21 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
     this.bootnodes.addAll(bootnodes);
   }
 
-  MiningParameters getMiningParameters() {
+  public MiningParameters getMiningParameters() {
     return miningParameters;
   }
 
   public void setMiningParameters(final MiningParameters miningParameters) {
     this.miningParameters = miningParameters;
+  }
+
+  public TransactionPoolConfiguration getTransactionPoolConfiguration() {
+    return txPoolConfiguration;
+  }
+
+  public void setTransactionPoolConfiguration(
+      final TransactionPoolConfiguration txPoolConfiguration) {
+    this.txPoolConfiguration = txPoolConfiguration;
   }
 
   public PrivacyParameters getPrivacyParameters() {
@@ -671,6 +692,10 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
 
   public void setPrivacyParameters(final PrivacyParameters privacyParameters) {
     this.privacyParameters = privacyParameters;
+  }
+
+  public DataStorageConfiguration getDataStorageConfiguration() {
+    return dataStorageConfiguration;
   }
 
   public boolean isDevMode() {
@@ -805,5 +830,9 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   @Override
   public Map<String, String> getEnvironment() {
     return environment;
+  }
+
+  public ApiConfiguration getApiConfiguration() {
+    return apiConfiguration;
   }
 }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
+import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.metrics.ObservableMetricsSystem;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.BesuConfiguration;
@@ -26,20 +27,20 @@ import org.hyperledger.besu.plugin.services.exception.StorageException;
 import org.hyperledger.besu.plugin.services.storage.SegmentIdentifier;
 import org.hyperledger.besu.plugin.services.storage.rocksdb.configuration.DatabaseMetadata;
 import org.hyperledger.besu.plugin.services.storage.rocksdb.configuration.RocksDBFactoryConfiguration;
+import org.hyperledger.besu.plugin.services.storage.rocksdb.segmented.RocksDBColumnarKeyValueStorageTest.TestSegment;
 
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class RocksDBKeyValueStorageFactoryTest {
 
   private static final String METADATA_FILENAME = "DATABASE_METADATA.json";
@@ -47,18 +48,16 @@ public class RocksDBKeyValueStorageFactoryTest {
 
   @Mock private RocksDBFactoryConfiguration rocksDbConfiguration;
   @Mock private BesuConfiguration commonConfiguration;
-  @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+  @TempDir public Path temporaryFolder;
   private final ObservableMetricsSystem metricsSystem = new NoOpMetricsSystem();
-  private final List<SegmentIdentifier> segments = List.of();
-  @Mock private SegmentIdentifier segment;
+  private final SegmentIdentifier segment = TestSegment.FOO;
+  private final List<SegmentIdentifier> segments = List.of(TestSegment.DEFAULT, segment);
 
   @Test
   public void shouldCreateCorrectMetadataFileForLatestVersion() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
-    when(commonConfiguration.getDatabaseVersion()).thenReturn(DEFAULT_VERSION);
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(
@@ -70,14 +69,19 @@ public class RocksDBKeyValueStorageFactoryTest {
     assertThat(DatabaseMetadata.lookUpFrom(tempDataDir).getVersion()).isEqualTo(DEFAULT_VERSION);
   }
 
-  @Test
-  public void shouldDetectVersion0DatabaseIfNoMetadataFileFound() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
-    Files.createDirectories(tempDatabaseDir);
-    Files.createDirectories(tempDataDir);
+  private void mockCommonConfiguration(final Path tempDataDir, final Path tempDatabaseDir) {
     when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
     when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
+    when(commonConfiguration.getDatabaseVersion()).thenReturn(DEFAULT_VERSION);
+  }
+
+  @Test
+  public void shouldDetectVersion1DatabaseIfNoMetadataFileFound() throws Exception {
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
+    Files.createDirectories(tempDatabaseDir);
+    Files.createDirectories(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(
@@ -85,17 +89,15 @@ public class RocksDBKeyValueStorageFactoryTest {
 
     storageFactory.create(segment, commonConfiguration, metricsSystem);
 
-    assertThat(DatabaseMetadata.lookUpFrom(tempDataDir).getVersion()).isZero();
+    assertThat(DatabaseMetadata.lookUpFrom(tempDataDir).getVersion()).isEqualTo(DEFAULT_VERSION);
   }
 
   @Test
   public void shouldDetectCorrectVersionIfMetadataFileExists() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
     Files.createDirectories(tempDataDir);
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
-    when(commonConfiguration.getDatabaseVersion()).thenReturn(DEFAULT_VERSION);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(
@@ -109,34 +111,33 @@ public class RocksDBKeyValueStorageFactoryTest {
 
   @Test
   public void shouldDetectCorrectVersionInCaseOfRollback() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
     Files.createDirectories(tempDatabaseDir);
     Files.createDirectories(tempDataDir);
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(
-            () -> rocksDbConfiguration, segments, 1, RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS);
+            () -> rocksDbConfiguration, segments, 2, RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS);
 
     storageFactory.create(segment, commonConfiguration, metricsSystem);
     storageFactory.close();
 
     final RocksDBKeyValueStorageFactory rolledbackStorageFactory =
         new RocksDBKeyValueStorageFactory(
-            () -> rocksDbConfiguration, segments, 0, RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS);
+            () -> rocksDbConfiguration, segments, 1, RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS);
     rolledbackStorageFactory.create(segment, commonConfiguration, metricsSystem);
   }
 
   @Test
   public void shouldThrowExceptionWhenVersionNumberIsInvalid() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
     Files.createDirectories(tempDatabaseDir);
     Files.createDirectories(tempDataDir);
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
+
     new DatabaseMetadata(-1).writeToDirectory(tempDataDir);
     assertThatThrownBy(
             () ->
@@ -149,13 +150,48 @@ public class RocksDBKeyValueStorageFactoryTest {
   }
 
   @Test
-  public void shouldSetSegmentationFieldDuringCreation() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
+  public void shouldThrowExceptionWhenExistingDatabaseVersionDifferentFromConfig()
+      throws Exception {
+
+    final int actualDatabaseVersion = DataStorageFormat.FOREST.getDatabaseVersion();
+    final int expectedDatabaseVersion = DataStorageFormat.BONSAI.getDatabaseVersion();
+
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
     Files.createDirectories(tempDatabaseDir);
     Files.createDirectories(tempDataDir);
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
+    when(commonConfiguration.getDatabaseVersion()).thenReturn(expectedDatabaseVersion);
+
+    new DatabaseMetadata(actualDatabaseVersion).writeToDirectory(tempDataDir);
+
+    String exceptionMessage =
+        String.format(
+            "Mismatch: DB at %s is %s (Version %s) but config expects %s (Version %s). Please check your config.",
+            tempDataDir.toAbsolutePath(),
+            DataStorageFormat.getName(actualDatabaseVersion),
+            actualDatabaseVersion,
+            DataStorageFormat.getName(expectedDatabaseVersion),
+            expectedDatabaseVersion);
+
+    assertThatThrownBy(
+            () ->
+                new RocksDBKeyValueStorageFactory(
+                        () -> rocksDbConfiguration,
+                        segments,
+                        RocksDBMetricsFactory.PUBLIC_ROCKS_DB_METRICS)
+                    .create(segment, commonConfiguration, metricsSystem))
+        .isInstanceOf(StorageException.class)
+        .hasMessage(exceptionMessage);
+  }
+
+  @Test
+  public void shouldSetSegmentationFieldDuringCreation() throws Exception {
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
+    Files.createDirectories(tempDatabaseDir);
+    Files.createDirectories(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(
@@ -166,12 +202,11 @@ public class RocksDBKeyValueStorageFactoryTest {
 
   @Test
   public void shouldThrowExceptionWhenMetaDataFileIsCorrupted() throws Exception {
-    final Path tempDataDir = temporaryFolder.newFolder().toPath().resolve("data");
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
+    final Path tempDataDir = temporaryFolder.resolve("data");
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
     Files.createDirectories(tempDatabaseDir);
     Files.createDirectories(tempDataDir);
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempDataDir);
+    mockCommonConfiguration(tempDataDir, tempDatabaseDir);
 
     final String badVersion = "{\"🦄\":1}";
     Files.write(
@@ -202,15 +237,11 @@ public class RocksDBKeyValueStorageFactoryTest {
 
   @Test
   public void shouldCreateDBCorrectlyIfSymlink() throws Exception {
-    final Path tempRealDataDir =
-        Files.createDirectories(temporaryFolder.newFolder().toPath().resolve("real-data-dir"));
+    final Path tempRealDataDir = Files.createDirectories(temporaryFolder.resolve("real-data-dir"));
     final Path tempSymLinkDataDir =
-        Files.createSymbolicLink(
-            temporaryFolder.newFolder().toPath().resolve("symlink-data-dir"), tempRealDataDir);
-    final Path tempDatabaseDir = temporaryFolder.newFolder().toPath().resolve("db");
-    when(commonConfiguration.getStoragePath()).thenReturn(tempDatabaseDir);
-    when(commonConfiguration.getDataPath()).thenReturn(tempSymLinkDataDir);
-    when(commonConfiguration.getDatabaseVersion()).thenReturn(DEFAULT_VERSION);
+        Files.createSymbolicLink(temporaryFolder.resolve("symlink-data-dir"), tempRealDataDir);
+    final Path tempDatabaseDir = temporaryFolder.resolve("db");
+    mockCommonConfiguration(tempSymLinkDataDir, tempDatabaseDir);
 
     final RocksDBKeyValueStorageFactory storageFactory =
         new RocksDBKeyValueStorageFactory(

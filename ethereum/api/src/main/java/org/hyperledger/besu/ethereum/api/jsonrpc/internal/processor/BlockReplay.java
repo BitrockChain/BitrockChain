@@ -14,9 +14,12 @@
  */
 package org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor;
 
-import org.hyperledger.besu.datatypes.DataGas;
+import static org.hyperledger.besu.ethereum.mainnet.feemarket.ExcessBlobGasCalculator.calculateExcessBlobGasForParent;
+
+import org.hyperledger.besu.datatypes.BlobGas;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.ethereum.ProtocolContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor.Tracer.TraceableState;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.Block;
@@ -37,9 +40,14 @@ public class BlockReplay {
 
   private final ProtocolSchedule protocolSchedule;
   private final Blockchain blockchain;
+  private final ProtocolContext protocolContext;
 
-  public BlockReplay(final ProtocolSchedule protocolSchedule, final Blockchain blockchain) {
+  public BlockReplay(
+      final ProtocolSchedule protocolSchedule,
+      final ProtocolContext protocolContext,
+      final Blockchain blockchain) {
     this.protocolSchedule = protocolSchedule;
+    this.protocolContext = protocolContext;
     this.blockchain = blockchain;
   }
 
@@ -49,21 +57,21 @@ public class BlockReplay {
         block.getHeader(),
         block.getBody(),
         (body, header, blockchain, transactionProcessor, protocolSpec) -> {
-          final Wei dataGasPrice =
+          final Wei blobGasPrice =
               protocolSpec
                   .getFeeMarket()
-                  .dataPrice(
+                  .blobGasPricePerGas(
                       blockchain
                           .getBlockHeader(header.getParentHash())
-                          .flatMap(BlockHeader::getExcessDataGas)
-                          .orElse(DataGas.ZERO));
+                          .map(parent -> calculateExcessBlobGasForParent(protocolSpec, parent))
+                          .orElse(BlobGas.ZERO));
 
           final List<TransactionTrace> transactionTraces =
               body.getTransactions().stream()
                   .map(
                       transaction ->
                           action.performAction(
-                              transaction, header, blockchain, transactionProcessor, dataGasPrice))
+                              transaction, header, blockchain, transactionProcessor, blobGasPrice))
                   .toList();
           return Optional.of(new BlockTrace(transactionTraces));
         });
@@ -83,20 +91,20 @@ public class BlockReplay {
         blockHash,
         (body, header, blockchain, transactionProcessor, protocolSpec) -> {
           final BlockHashLookup blockHashLookup = new CachingBlockHashLookup(header, blockchain);
-          final Wei dataGasPrice =
+          final Wei blobGasPrice =
               protocolSpec
                   .getFeeMarket()
-                  .dataPrice(
+                  .blobGasPricePerGas(
                       blockchain
                           .getBlockHeader(header.getParentHash())
-                          .flatMap(BlockHeader::getExcessDataGas)
-                          .orElse(DataGas.ZERO));
+                          .map(parent -> calculateExcessBlobGasForParent(protocolSpec, parent))
+                          .orElse(BlobGas.ZERO));
 
           for (final Transaction transaction : body.getTransactions()) {
             if (transaction.getHash().equals(transactionHash)) {
               return Optional.of(
                   action.performAction(
-                      transaction, header, blockchain, transactionProcessor, dataGasPrice));
+                      transaction, header, blockchain, transactionProcessor, blobGasPrice));
             } else {
               transactionProcessor.processTransaction(
                   blockchain,
@@ -107,7 +115,7 @@ public class BlockReplay {
                   blockHashLookup,
                   false,
                   TransactionValidationParams.blockReplay(),
-                  dataGasPrice);
+                  blobGasPrice);
             }
           }
           return Optional.empty();
@@ -123,7 +131,7 @@ public class BlockReplay {
         mutableWorldState,
         blockHash,
         transactionHash,
-        (transaction, blockHeader, blockchain, transactionProcessor, dataGasPrice) -> {
+        (transaction, blockHeader, blockchain, transactionProcessor, blobGasPrice) -> {
           final ProtocolSpec spec = protocolSchedule.getByBlockHeader(blockHeader);
           transactionProcessor.processTransaction(
               blockchain,
@@ -134,16 +142,16 @@ public class BlockReplay {
               new CachingBlockHashLookup(blockHeader, blockchain),
               false,
               TransactionValidationParams.blockReplay(),
-              dataGasPrice);
+              blobGasPrice);
           return action.performAction(
-              transaction, blockHeader, blockchain, transactionProcessor, dataGasPrice);
+              transaction, blockHeader, blockchain, transactionProcessor, blobGasPrice);
         });
   }
 
   public <T> Optional<T> performActionWithBlock(final Hash blockHash, final BlockAction<T> action) {
     Optional<Block> maybeBlock = getBlock(blockHash);
     if (maybeBlock.isEmpty()) {
-      maybeBlock = getBadBlock(blockHash);
+      maybeBlock = protocolContext.getBadBlockManager().getBadBlock(blockHash);
     }
     return maybeBlock.flatMap(
         block -> performActionWithBlock(block.getHeader(), block.getBody(), action));
@@ -174,12 +182,6 @@ public class BlockReplay {
     return Optional.empty();
   }
 
-  private Optional<Block> getBadBlock(final Hash blockHash) {
-    final ProtocolSpec protocolSpec =
-        protocolSchedule.getByBlockHeader(blockchain.getChainHeadHeader());
-    return protocolSpec.getBadBlocksManager().getBadBlock(blockHash);
-  }
-
   @FunctionalInterface
   public interface BlockAction<T> {
     Optional<T> perform(
@@ -197,6 +199,6 @@ public class BlockReplay {
         BlockHeader blockHeader,
         Blockchain blockchain,
         MainnetTransactionProcessor transactionProcessor,
-        Wei dataGasPrice);
+        Wei blobGasPrice);
   }
 }

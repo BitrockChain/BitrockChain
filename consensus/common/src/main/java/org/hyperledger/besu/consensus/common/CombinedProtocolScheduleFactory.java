@@ -52,13 +52,23 @@ public class CombinedProtocolScheduleFactory {
           Optional.ofNullable(forkSpecs.higher(spec)).map(ForkSpec::getBlock);
       protocolSchedule.getScheduledProtocolSpecs().stream()
           .filter(protocolSpecMatchesConsensusBlockRange(spec.getBlock(), endBlock))
-          .forEach(s -> combinedProtocolSchedule.putBlockNumberMilestone(s.milestone(), s.spec()));
+          .forEach(
+              s -> {
+                if (s instanceof ScheduledProtocolSpec.TimestampProtocolSpec) {
+                  combinedProtocolSchedule.putTimestampMilestone(s.fork().milestone(), s.spec());
+                } else if (s instanceof ScheduledProtocolSpec.BlockNumberProtocolSpec) {
+                  combinedProtocolSchedule.putBlockNumberMilestone(s.fork().milestone(), s.spec());
+                } else {
+                  throw new IllegalStateException(
+                      "Unexpected milestone: " + s + " for milestone: " + s.fork().milestone());
+                }
+              });
 
       // When moving to a new consensus mechanism we want to use the last milestone but created by
       // our consensus mechanism's BesuControllerBuilder so any additional rules are applied
       if (spec.getBlock() > 0) {
         combinedProtocolSchedule.putBlockNumberMilestone(
-            spec.getBlock(), protocolSchedule.getByBlockNumber(spec.getBlock()));
+            spec.getBlock(), protocolSchedule.getByBlockNumberOrTimestamp(spec.getBlock(), 0L));
       }
     }
     return combinedProtocolSchedule;
@@ -67,7 +77,7 @@ public class CombinedProtocolScheduleFactory {
   private Predicate<ScheduledProtocolSpec> protocolSpecMatchesConsensusBlockRange(
       final long startBlock, final Optional<Long> endBlock) {
     return scheduledProtocolSpec ->
-        scheduledProtocolSpec.milestone() >= startBlock
-            && endBlock.map(b -> scheduledProtocolSpec.milestone() < b).orElse(true);
+        scheduledProtocolSpec.fork().milestone() >= startBlock
+            && endBlock.map(b -> scheduledProtocolSpec.fork().milestone() < b).orElse(true);
   }
 }

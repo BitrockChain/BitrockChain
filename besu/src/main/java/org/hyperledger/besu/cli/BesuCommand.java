@@ -21,17 +21,12 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static org.hyperledger.besu.cli.DefaultCommandValues.getDefaultBesuDataPath;
 import static org.hyperledger.besu.cli.config.NetworkName.MAINNET;
+import static org.hyperledger.besu.cli.options.unstable.NetworkingOptions.PEER_LOWER_BOUND_FLAG;
 import static org.hyperledger.besu.cli.util.CommandLineUtils.DEPENDENCY_WARNING_MSG;
-import static org.hyperledger.besu.cli.util.CommandLineUtils.DEPRECATION_WARNING_MSG;
+import static org.hyperledger.besu.cli.util.CommandLineUtils.isOptionSet;
 import static org.hyperledger.besu.controller.BesuController.DATABASE_PATH;
-import static org.hyperledger.besu.ethereum.api.graphql.GraphQLConfiguration.DEFAULT_GRAPHQL_HTTP_PORT;
 import static org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration.DEFAULT_ENGINE_JSON_RPC_PORT;
-import static org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration.DEFAULT_JSON_RPC_PORT;
-import static org.hyperledger.besu.ethereum.api.jsonrpc.RpcApis.DEFAULT_RPC_APIS;
-import static org.hyperledger.besu.ethereum.api.jsonrpc.RpcApis.VALID_APIS;
 import static org.hyperledger.besu.ethereum.api.jsonrpc.authentication.EngineAuthService.EPHEMERAL_JWT_FILE;
-import static org.hyperledger.besu.ethereum.api.jsonrpc.websocket.WebSocketConfiguration.DEFAULT_WEBSOCKET_PORT;
-import static org.hyperledger.besu.ethereum.permissioning.GoQuorumPermissioningConfiguration.QIP714_DEFAULT_BLOCK;
 import static org.hyperledger.besu.metrics.BesuMetricCategory.DEFAULT_METRIC_CATEGORIES;
 import static org.hyperledger.besu.metrics.MetricsProtocol.PROMETHEUS;
 import static org.hyperledger.besu.metrics.prometheus.MetricsConfiguration.DEFAULT_METRICS_PORT;
@@ -46,26 +41,30 @@ import org.hyperledger.besu.chainimport.JsonBlockImporter;
 import org.hyperledger.besu.chainimport.RlpBlockImporter;
 import org.hyperledger.besu.cli.config.EthNetworkConfig;
 import org.hyperledger.besu.cli.config.NetworkName;
-import org.hyperledger.besu.cli.converter.FractionConverter;
+import org.hyperledger.besu.cli.config.ProfileName;
 import org.hyperledger.besu.cli.converter.MetricCategoryConverter;
 import org.hyperledger.besu.cli.converter.PercentageConverter;
-import org.hyperledger.besu.cli.custom.CorsAllowedOriginsProperty;
 import org.hyperledger.besu.cli.custom.JsonRPCAllowlistHostsProperty;
-import org.hyperledger.besu.cli.custom.RpcAuthFileValidator;
 import org.hyperledger.besu.cli.error.BesuExecutionExceptionHandler;
 import org.hyperledger.besu.cli.error.BesuParameterExceptionHandler;
+import org.hyperledger.besu.cli.options.MiningOptions;
+import org.hyperledger.besu.cli.options.TransactionPoolOptions;
+import org.hyperledger.besu.cli.options.stable.ApiConfigurationOptions;
 import org.hyperledger.besu.cli.options.stable.DataStorageOptions;
 import org.hyperledger.besu.cli.options.stable.EthstatsOptions;
+import org.hyperledger.besu.cli.options.stable.GraphQlOptions;
+import org.hyperledger.besu.cli.options.stable.JsonRpcHttpOptions;
 import org.hyperledger.besu.cli.options.stable.LoggingLevelOption;
 import org.hyperledger.besu.cli.options.stable.NodePrivateKeyFileOption;
 import org.hyperledger.besu.cli.options.stable.P2PTLSConfigOptions;
+import org.hyperledger.besu.cli.options.stable.PermissionsOptions;
+import org.hyperledger.besu.cli.options.stable.RpcWebsocketOptions;
 import org.hyperledger.besu.cli.options.unstable.ChainPruningOptions;
 import org.hyperledger.besu.cli.options.unstable.DnsOptions;
 import org.hyperledger.besu.cli.options.unstable.EthProtocolOptions;
 import org.hyperledger.besu.cli.options.unstable.EvmOptions;
 import org.hyperledger.besu.cli.options.unstable.IpcOptions;
 import org.hyperledger.besu.cli.options.unstable.MetricsCLIOptions;
-import org.hyperledger.besu.cli.options.unstable.MiningOptions;
 import org.hyperledger.besu.cli.options.unstable.NatOptions;
 import org.hyperledger.besu.cli.options.unstable.NativeLibraryOptions;
 import org.hyperledger.besu.cli.options.unstable.NetworkingOptions;
@@ -73,12 +72,12 @@ import org.hyperledger.besu.cli.options.unstable.PkiBlockCreationOptions;
 import org.hyperledger.besu.cli.options.unstable.PrivacyPluginOptions;
 import org.hyperledger.besu.cli.options.unstable.RPCOptions;
 import org.hyperledger.besu.cli.options.unstable.SynchronizerOptions;
-import org.hyperledger.besu.cli.options.unstable.TransactionPoolOptions;
 import org.hyperledger.besu.cli.presynctasks.PreSynchronizationTaskRunner;
 import org.hyperledger.besu.cli.presynctasks.PrivateDatabaseMigrationPreSyncTask;
 import org.hyperledger.besu.cli.subcommands.PasswordSubCommand;
 import org.hyperledger.besu.cli.subcommands.PublicKeySubCommand;
 import org.hyperledger.besu.cli.subcommands.RetestethSubCommand;
+import org.hyperledger.besu.cli.subcommands.TxParseSubCommand;
 import org.hyperledger.besu.cli.subcommands.ValidateConfigSubCommand;
 import org.hyperledger.besu.cli.subcommands.blocks.BlocksSubCommand;
 import org.hyperledger.besu.cli.subcommands.operator.OperatorSubCommand;
@@ -110,23 +109,21 @@ import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.enclave.EnclaveFactory;
 import org.hyperledger.besu.ethereum.GasLimitCalculator;
 import org.hyperledger.besu.ethereum.api.ApiConfiguration;
-import org.hyperledger.besu.ethereum.api.ImmutableApiConfiguration;
 import org.hyperledger.besu.ethereum.api.graphql.GraphQLConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.RpcApis;
-import org.hyperledger.besu.ethereum.api.jsonrpc.RpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.authentication.JwtAlgorithm;
 import org.hyperledger.besu.ethereum.api.jsonrpc.ipc.JsonRpcIpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.websocket.WebSocketConfiguration;
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
-import org.hyperledger.besu.ethereum.api.tls.FileBasedPasswordProvider;
-import org.hyperledger.besu.ethereum.api.tls.TlsClientAuthConfiguration;
-import org.hyperledger.besu.ethereum.api.tls.TlsConfiguration;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningParametersMetrics;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
+import org.hyperledger.besu.ethereum.core.VersionMetadata;
 import org.hyperledger.besu.ethereum.eth.sync.SyncMode;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
+import org.hyperledger.besu.ethereum.eth.transactions.ImmutableTransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.mainnet.FrontierTargetingGasLimitCalculator;
 import org.hyperledger.besu.ethereum.p2p.config.DiscoveryConfiguration;
@@ -134,18 +131,17 @@ import org.hyperledger.besu.ethereum.p2p.peers.EnodeDnsConfiguration;
 import org.hyperledger.besu.ethereum.p2p.peers.EnodeURLImpl;
 import org.hyperledger.besu.ethereum.p2p.peers.StaticNodesParser;
 import org.hyperledger.besu.ethereum.p2p.rlpx.connections.netty.TLSConfiguration;
-import org.hyperledger.besu.ethereum.permissioning.GoQuorumPermissioningConfiguration;
 import org.hyperledger.besu.ethereum.permissioning.LocalPermissioningConfiguration;
 import org.hyperledger.besu.ethereum.permissioning.PermissioningConfiguration;
-import org.hyperledger.besu.ethereum.permissioning.PermissioningConfigurationBuilder;
-import org.hyperledger.besu.ethereum.permissioning.SmartContractPermissioningConfiguration;
 import org.hyperledger.besu.ethereum.privacy.storage.keyvalue.PrivacyKeyValueStorageProvider;
 import org.hyperledger.besu.ethereum.privacy.storage.keyvalue.PrivacyKeyValueStorageProviderBuilder;
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueSegmentIdentifier;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueStorageProvider;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueStorageProviderBuilder;
-import org.hyperledger.besu.ethereum.worldstate.PrunerConfiguration;
+import org.hyperledger.besu.ethereum.trie.forest.pruner.PrunerConfiguration;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.evm.precompile.AbstractAltBnPrecompiledContract;
 import org.hyperledger.besu.evm.precompile.BigIntegerModularExponentiationPrecompiledContract;
 import org.hyperledger.besu.evm.precompile.KZGPointEvalPrecompiledContract;
@@ -165,6 +161,7 @@ import org.hyperledger.besu.plugin.services.BlockchainService;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.hyperledger.besu.plugin.services.PermissioningService;
 import org.hyperledger.besu.plugin.services.PicoCLIOptions;
+import org.hyperledger.besu.plugin.services.PluginTransactionValidatorService;
 import org.hyperledger.besu.plugin.services.PrivacyPluginService;
 import org.hyperledger.besu.plugin.services.RpcEndpointService;
 import org.hyperledger.besu.plugin.services.SecurityModuleService;
@@ -177,12 +174,15 @@ import org.hyperledger.besu.plugin.services.metrics.MetricCategoryRegistry;
 import org.hyperledger.besu.plugin.services.securitymodule.SecurityModule;
 import org.hyperledger.besu.plugin.services.storage.PrivacyKeyValueStorageFactory;
 import org.hyperledger.besu.plugin.services.storage.rocksdb.RocksDBPlugin;
-import org.hyperledger.besu.plugin.services.txselection.TransactionSelectorFactory;
+import org.hyperledger.besu.plugin.services.txselection.PluginTransactionSelectorFactory;
+import org.hyperledger.besu.plugin.services.txvalidator.PluginTransactionValidatorFactory;
+import org.hyperledger.besu.services.BesuConfigurationImpl;
 import org.hyperledger.besu.services.BesuEventsImpl;
 import org.hyperledger.besu.services.BesuPluginContextImpl;
 import org.hyperledger.besu.services.BlockchainServiceImpl;
 import org.hyperledger.besu.services.PermissioningServiceImpl;
 import org.hyperledger.besu.services.PicoCLIOptionsImpl;
+import org.hyperledger.besu.services.PluginTransactionValidatorServiceImpl;
 import org.hyperledger.besu.services.PrivacyPluginServiceImpl;
 import org.hyperledger.besu.services.RpcEndpointServiceImpl;
 import org.hyperledger.besu.services.SecurityModuleServiceImpl;
@@ -207,8 +207,6 @@ import java.net.SocketException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -219,15 +217,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalLong;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
+import javax.annotation.Nonnull;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
@@ -240,7 +237,6 @@ import io.vertx.core.json.DecodeException;
 import io.vertx.core.metrics.MetricsOptions;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.units.bigints.UInt256;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import picocli.AutoComplete;
 import picocli.CommandLine;
@@ -263,8 +259,12 @@ import picocli.CommandLine.ParameterException;
     synopsisHeading = "%n",
     descriptionHeading = "%n@|bold,fg(cyan) Description:|@%n%n",
     optionListHeading = "%n@|bold,fg(cyan) Options:|@%n",
-    footerHeading = "%n",
-    footer = "Besu is licensed under the Apache License 2.0")
+    footerHeading = "%nBesu is licensed under the Apache License 2.0%n",
+    footer = {
+      "%n%n@|fg(cyan) To get started quickly, just choose a network to sync and a profile to run with suggested defaults:|@",
+      "%n@|fg(cyan) for Mainnet|@ --network=mainnet --profile=[minimalist_staker|staker]",
+      "%nMore info and other profiles at https://besu.hyperledger.org%n"
+    })
 public class BesuCommand implements DefaultCommandValues, Runnable {
 
   @SuppressWarnings("PrivateStaticFinalLoggers")
@@ -282,9 +282,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   final SynchronizerOptions unstableSynchronizerOptions = SynchronizerOptions.create();
   final EthProtocolOptions unstableEthProtocolOptions = EthProtocolOptions.create();
   final MetricsCLIOptions unstableMetricsCLIOptions = MetricsCLIOptions.create();
-  final TransactionPoolOptions unstableTransactionPoolOptions = TransactionPoolOptions.create();
   private final DnsOptions unstableDnsOptions = DnsOptions.create();
-  private final MiningOptions unstableMiningOptions = MiningOptions.create();
   private final NatOptions unstableNatOptions = NatOptions.create();
   private final NativeLibraryOptions unstableNativeLibraryOptions = NativeLibraryOptions.create();
   private final RPCOptions unstableRPCOptions = RPCOptions.create();
@@ -294,11 +292,17 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   private final ChainPruningOptions unstableChainPruningOptions = ChainPruningOptions.create();
 
   // stable CLI options
-  private final DataStorageOptions dataStorageOptions = DataStorageOptions.create();
+  final DataStorageOptions dataStorageOptions = DataStorageOptions.create();
   private final EthstatsOptions ethstatsOptions = EthstatsOptions.create();
   private final NodePrivateKeyFileOption nodePrivateKeyFileOption =
       NodePrivateKeyFileOption.create();
   private final LoggingLevelOption loggingLevelOption = LoggingLevelOption.create();
+
+  @CommandLine.ArgGroup(validate = false, heading = "@|bold Tx Pool Common Options|@%n")
+  final TransactionPoolOptions transactionPoolOptions = TransactionPoolOptions.create();
+
+  @CommandLine.ArgGroup(validate = false, heading = "@|bold Block Builder Options|@%n")
+  final MiningOptions miningOptions = MiningOptions.create();
 
   private final RunnerBuilder runnerBuilder;
   private final BesuController.Builder controllerBuilderFactory;
@@ -325,7 +329,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   private int maxPeers;
   private int maxRemoteInitiatedPeers;
-  private int peersLowerBound;
 
   // CLI options defined by user at runtime.
   // Options parsing is done with CLI library Picocli https://picocli.info/
@@ -363,11 +366,13 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       description = "Identification for this node in the Client ID",
       arity = "1")
   private final Optional<String> identityString = Optional.empty();
+
   // P2P Discovery Option Group
   @CommandLine.ArgGroup(validate = false, heading = "@|bold P2P Discovery Options|@%n")
   P2PDiscoveryOptionGroup p2PDiscoveryOptionGroup = new P2PDiscoveryOptionGroup();
 
   private final TransactionSelectionServiceImpl transactionSelectionServiceImpl;
+  private final PluginTransactionValidatorServiceImpl transactionValidatorServiceImpl;
 
   static class P2PDiscoveryOptionGroup {
 
@@ -456,10 +461,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             "The maximum percentage of P2P connections that can be initiated remotely. Must be between 0 and 100 inclusive. (default: ${DEFAULT-VALUE})",
         arity = "1",
         converter = PercentageConverter.class)
-    private final Integer maxRemoteConnectionsPercentage =
-        Fraction.fromFloat(DEFAULT_FRACTION_REMOTE_WIRE_CONNECTIONS_ALLOWED)
-            .toPercentage()
-            .getValue();
+    private final Percentage maxRemoteConnectionsPercentage =
+        Fraction.fromFloat(DEFAULT_FRACTION_REMOTE_WIRE_CONNECTIONS_ALLOWED).toPercentage();
 
     @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
     @CommandLine.Option(
@@ -510,15 +513,15 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       names = {"--sync-mode"},
       paramLabel = MANDATORY_MODE_FORMAT_HELP,
       description =
-          "Synchronization mode, possible values are ${COMPLETION-CANDIDATES} (default: FAST if a --network is supplied and privacy isn't enabled. FULL otherwise.)")
+          "Synchronization mode, possible values are ${COMPLETION-CANDIDATES} (default: SNAP if a --network is supplied and privacy isn't enabled. FULL otherwise.)")
   private SyncMode syncMode = null;
 
   @Option(
-      names = {"--fast-sync-min-peers"},
+      names = {"--sync-min-peers", "--fast-sync-min-peers"},
       paramLabel = MANDATORY_INTEGER_FORMAT_HELP,
       description =
-          "Minimum number of peers required before starting fast sync. Has only effect on PoW networks. (default: ${DEFAULT-VALUE})")
-  private final Integer fastSyncMinPeerCount = FAST_SYNC_MIN_PEER_COUNT;
+          "Minimum number of peers required before starting sync. Has effect only on non-PoS networks. (default: ${DEFAULT-VALUE})")
+  private final Integer syncMinPeerCount = SYNC_MIN_PEER_COUNT;
 
   @Option(
       names = {"--network"},
@@ -528,6 +531,13 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
           "Synchronize against the indicated network, possible values are ${COMPLETION-CANDIDATES}."
               + " (default: ${DEFAULT-VALUE})")
   private final NetworkName network = null;
+
+  @Option(
+      names = {PROFILE_OPTION_NAME},
+      paramLabel = PROFILE_FORMAT_HELP,
+      description =
+          "Overwrite default settings. Possible values are ${COMPLETION-CANDIDATES}. (default: none)")
+  private final ProfileName profile = null;
 
   @Option(
       names = {"--nat-method"},
@@ -553,36 +563,14 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       arity = "1")
   private final Path kzgTrustedSetupFile = null;
 
+  @Option(
+      names = {"--version-compatibility-protection"},
+      description =
+          "Perform compatibility checks between the version of Besu being started and the version of Besu that last started with this data directory. (default: ${DEFAULT-VALUE})")
+  private Boolean versionCompatibilityProtection = null;
+
   @CommandLine.ArgGroup(validate = false, heading = "@|bold GraphQL Options|@%n")
-  GraphQlOptionGroup graphQlOptionGroup = new GraphQlOptionGroup();
-
-  static class GraphQlOptionGroup {
-    @Option(
-        names = {"--graphql-http-enabled"},
-        description = "Set to start the GraphQL HTTP service (default: ${DEFAULT-VALUE})")
-    private final Boolean isGraphQLHttpEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @Option(
-        names = {"--graphql-http-host"},
-        paramLabel = MANDATORY_HOST_FORMAT_HELP,
-        description = "Host for GraphQL HTTP to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private String graphQLHttpHost;
-
-    @Option(
-        names = {"--graphql-http-port"},
-        paramLabel = MANDATORY_PORT_FORMAT_HELP,
-        description = "Port for GraphQL HTTP to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer graphQLHttpPort = DEFAULT_GRAPHQL_HTTP_PORT;
-
-    @Option(
-        names = {"--graphql-http-cors-origins"},
-        description = "Comma separated origin domain URLs for CORS validation (default: none)")
-    protected final CorsAllowedOriginsProperty graphQLHttpCorsAllowedOrigins =
-        new CorsAllowedOriginsProperty();
-  }
+  GraphQlOptions graphQlOptions = new GraphQlOptions();
 
   // Engine JSON-PRC Options
   @CommandLine.ArgGroup(validate = false, heading = "@|bold Engine JSON-RPC Options|@%n")
@@ -609,13 +597,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     private final Path engineJwtKeyFile = null;
 
     @Option(
-        names = {"--engine-jwt-enabled"},
-        description = "deprecated option, engine jwt auth is enabled by default",
-        hidden = true)
-    @SuppressWarnings({"FieldCanBeFinal", "UnusedVariable"})
-    private final Boolean deprecatedIsEngineAuthEnabled = true;
-
-    @Option(
         names = {"--engine-jwt-disabled"},
         description = "Disable authentication for Engine APIs (default: ${DEFAULT-VALUE})")
     private final Boolean isEngineAuthDisabled = false;
@@ -632,247 +613,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   // JSON-RPC HTTP Options
   @CommandLine.ArgGroup(validate = false, heading = "@|bold JSON-RPC HTTP Options|@%n")
-  JsonRPCHttpOptionGroup jsonRPCHttpOptionGroup = new JsonRPCHttpOptionGroup();
-
-  static class JsonRPCHttpOptionGroup {
-    @Option(
-        names = {"--rpc-http-enabled"},
-        description = "Set to start the JSON-RPC HTTP service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcHttpEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @Option(
-        names = {"--rpc-http-host"},
-        paramLabel = MANDATORY_HOST_FORMAT_HELP,
-        description = "Host for JSON-RPC HTTP to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private String rpcHttpHost;
-
-    @Option(
-        names = {"--rpc-http-port"},
-        paramLabel = MANDATORY_PORT_FORMAT_HELP,
-        description = "Port for JSON-RPC HTTP to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer rpcHttpPort = DEFAULT_JSON_RPC_PORT;
-
-    @Option(
-        names = {"--rpc-http-max-active-connections"},
-        description =
-            "Maximum number of HTTP connections allowed for JSON-RPC (default: ${DEFAULT-VALUE}). Once this limit is reached, incoming connections will be rejected.",
-        arity = "1")
-    private final Integer rpcHttpMaxConnections = DEFAULT_HTTP_MAX_CONNECTIONS;
-
-    // A list of origins URLs that are accepted by the JsonRpcHttpServer (CORS)
-    @Option(
-        names = {"--rpc-http-cors-origins"},
-        description = "Comma separated origin domain URLs for CORS validation (default: none)")
-    private final CorsAllowedOriginsProperty rpcHttpCorsAllowedOrigins =
-        new CorsAllowedOriginsProperty();
-
-    @Option(
-        names = {"--rpc-http-api", "--rpc-http-apis"},
-        paramLabel = "<api name>",
-        split = " {0,1}, {0,1}",
-        arity = "1..*",
-        description =
-            "Comma separated list of APIs to enable on JSON-RPC HTTP service (default: ${DEFAULT-VALUE})")
-    private final List<String> rpcHttpApis = DEFAULT_RPC_APIS;
-
-    @Option(
-        names = {"--rpc-http-api-method-no-auth", "--rpc-http-api-methods-no-auth"},
-        paramLabel = "<api name>",
-        split = " {0,1}, {0,1}",
-        arity = "1..*",
-        description =
-            "Comma separated list of API methods to exclude from RPC authentication services, RPC HTTP authentication must be enabled")
-    private final List<String> rpcHttpApiMethodsNoAuth = new ArrayList<String>();
-
-    @Option(
-        names = {"--rpc-http-authentication-enabled"},
-        description =
-            "Require authentication for the JSON-RPC HTTP service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcHttpAuthenticationEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @CommandLine.Option(
-        names = {"--rpc-http-authentication-credentials-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description =
-            "Storage file for JSON-RPC HTTP authentication credentials (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private String rpcHttpAuthenticationCredentialsFile = null;
-
-    @CommandLine.Option(
-        names = {"--rpc-http-authentication-jwt-public-key-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description = "JWT public key file for JSON-RPC HTTP authentication",
-        arity = "1")
-    private final File rpcHttpAuthenticationPublicKeyFile = null;
-
-    @Option(
-        names = {"--rpc-http-authentication-jwt-algorithm"},
-        description =
-            "Encryption algorithm used for HTTP JWT public key. Possible values are ${COMPLETION-CANDIDATES}"
-                + " (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final JwtAlgorithm rpcHttpAuthenticationAlgorithm = DEFAULT_JWT_ALGORITHM;
-
-    @Option(
-        names = {"--rpc-http-tls-enabled"},
-        description = "Enable TLS for the JSON-RPC HTTP service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcHttpTlsEnabled = false;
-
-    @Option(
-        names = {"--rpc-http-tls-keystore-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description =
-            "Keystore (PKCS#12) containing key/certificate for the JSON-RPC HTTP service. Required if TLS is enabled.")
-    private final Path rpcHttpTlsKeyStoreFile = null;
-
-    @Option(
-        names = {"--rpc-http-tls-keystore-password-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description =
-            "File containing password to unlock keystore for the JSON-RPC HTTP service. Required if TLS is enabled.")
-    private final Path rpcHttpTlsKeyStorePasswordFile = null;
-
-    @Option(
-        names = {"--rpc-http-tls-client-auth-enabled"},
-        description =
-            "Enable TLS client authentication for the JSON-RPC HTTP service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcHttpTlsClientAuthEnabled = false;
-
-    @Option(
-        names = {"--rpc-http-tls-known-clients-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description =
-            "Path to file containing clients certificate common name and fingerprint for client authentication")
-    private final Path rpcHttpTlsKnownClientsFile = null;
-
-    @Option(
-        names = {"--rpc-http-tls-ca-clients-enabled"},
-        description =
-            "Enable to accept clients certificate signed by a valid CA for client authentication (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcHttpTlsCAClientsEnabled = false;
-
-    @Option(
-        names = {"--rpc-http-tls-protocol", "--rpc-http-tls-protocols"},
-        description =
-            "Comma separated list of TLS protocols to support (default: ${DEFAULT-VALUE})",
-        split = ",",
-        arity = "1..*")
-    private final List<String> rpcHttpTlsProtocols = new ArrayList<>(DEFAULT_TLS_PROTOCOLS);
-
-    @Option(
-        names = {"--rpc-http-tls-cipher-suite", "--rpc-http-tls-cipher-suites"},
-        description = "Comma separated list of TLS cipher suites to support",
-        split = ",",
-        arity = "1..*")
-    private final List<String> rpcHttpTlsCipherSuites = new ArrayList<>();
-
-    @CommandLine.Option(
-        names = {"--rpc-http-max-batch-size"},
-        paramLabel = MANDATORY_INTEGER_FORMAT_HELP,
-        description =
-            "Specifies the maximum number of requests in a single RPC batch request via RPC. -1 specifies no limit  (default: ${DEFAULT-VALUE})")
-    private final Integer rpcHttpMaxBatchSize = DEFAULT_HTTP_MAX_BATCH_SIZE;
-
-    @CommandLine.Option(
-        names = {"--rpc-http-max-request-content-length"},
-        paramLabel = MANDATORY_LONG_FORMAT_HELP,
-        description = "Specifies the maximum request content length. (default: ${DEFAULT-VALUE})")
-    private final Long rpcHttpMaxRequestContentLength = DEFAULT_MAX_REQUEST_CONTENT_LENGTH;
-  }
+  JsonRpcHttpOptions jsonRpcHttpOptions = new JsonRpcHttpOptions();
 
   // JSON-RPC Websocket Options
   @CommandLine.ArgGroup(validate = false, heading = "@|bold JSON-RPC Websocket Options|@%n")
-  JsonRPCWebsocketOptionGroup jsonRPCWebsocketOptionGroup = new JsonRPCWebsocketOptionGroup();
-
-  static class JsonRPCWebsocketOptionGroup {
-    @Option(
-        names = {"--rpc-ws-authentication-jwt-algorithm"},
-        description =
-            "Encryption algorithm used for Websockets JWT public key. Possible values are ${COMPLETION-CANDIDATES}"
-                + " (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final JwtAlgorithm rpcWebsocketsAuthenticationAlgorithm = DEFAULT_JWT_ALGORITHM;
-
-    @Option(
-        names = {"--rpc-ws-enabled"},
-        description = "Set to start the JSON-RPC WebSocket service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcWsEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @Option(
-        names = {"--rpc-ws-host"},
-        paramLabel = MANDATORY_HOST_FORMAT_HELP,
-        description =
-            "Host for JSON-RPC WebSocket service to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private String rpcWsHost;
-
-    @Option(
-        names = {"--rpc-ws-port"},
-        paramLabel = MANDATORY_PORT_FORMAT_HELP,
-        description =
-            "Port for JSON-RPC WebSocket service to listen on (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer rpcWsPort = DEFAULT_WEBSOCKET_PORT;
-
-    @Option(
-        names = {"--rpc-ws-max-frame-size"},
-        description =
-            "Maximum size in bytes for JSON-RPC WebSocket frames (default: ${DEFAULT-VALUE}). If this limit is exceeded, the websocket will be disconnected.",
-        arity = "1")
-    private final Integer rpcWsMaxFrameSize = DEFAULT_WS_MAX_FRAME_SIZE;
-
-    @Option(
-        names = {"--rpc-ws-max-active-connections"},
-        description =
-            "Maximum number of WebSocket connections allowed for JSON-RPC (default: ${DEFAULT-VALUE}). Once this limit is reached, incoming connections will be rejected.",
-        arity = "1")
-    private final Integer rpcWsMaxConnections = DEFAULT_WS_MAX_CONNECTIONS;
-
-    @Option(
-        names = {"--rpc-ws-api", "--rpc-ws-apis"},
-        paramLabel = "<api name>",
-        split = " {0,1}, {0,1}",
-        arity = "1..*",
-        description =
-            "Comma separated list of APIs to enable on JSON-RPC WebSocket service (default: ${DEFAULT-VALUE})")
-    private final List<String> rpcWsApis = DEFAULT_RPC_APIS;
-
-    @Option(
-        names = {"--rpc-ws-api-methods-no-auth", "--rpc-ws-api-method-no-auth"},
-        paramLabel = "<api name>",
-        split = " {0,1}, {0,1}",
-        arity = "1..*",
-        description =
-            "Comma separated list of RPC methods to exclude from RPC authentication services, RPC WebSocket authentication must be enabled")
-    private final List<String> rpcWsApiMethodsNoAuth = new ArrayList<String>();
-
-    @Option(
-        names = {"--rpc-ws-authentication-enabled"},
-        description =
-            "Require authentication for the JSON-RPC WebSocket service (default: ${DEFAULT-VALUE})")
-    private final Boolean isRpcWsAuthenticationEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @CommandLine.Option(
-        names = {"--rpc-ws-authentication-credentials-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description =
-            "Storage file for JSON-RPC WebSocket authentication credentials (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private String rpcWsAuthenticationCredentialsFile = null;
-
-    @CommandLine.Option(
-        names = {"--rpc-ws-authentication-jwt-public-key-file"},
-        paramLabel = MANDATORY_FILE_FORMAT_HELP,
-        description = "JWT public key file for JSON-RPC WebSocket authentication",
-        arity = "1")
-    private final File rpcWsAuthenticationPublicKeyFile = null;
-  }
+  RpcWebsocketOptions rpcWebsocketOptions = new RpcWebsocketOptions();
 
   // Privacy Options Group
   @CommandLine.ArgGroup(validate = false, heading = "@|bold Privacy Options|@%n")
@@ -940,13 +685,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         names = {"--privacy-flexible-groups-enabled"},
         description = "Enable flexible privacy groups (default: ${DEFAULT-VALUE})")
     private final Boolean isFlexiblePrivacyGroupsEnabled = false;
-
-    @Option(
-        hidden = true,
-        names = {"--privacy-onchain-groups-enabled"},
-        description =
-            "!!DEPRECATED!! Use `--privacy-flexible-groups-enabled` instead. Enable flexible (onchain) privacy groups (default: ${DEFAULT-VALUE})")
-    private final Boolean isOnchainPrivacyGroupsEnabled = false;
   }
 
   // Metrics Option Group
@@ -1057,70 +795,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
           "How deep a chain reorganization must be in order for it to be logged (default: ${DEFAULT-VALUE})")
   private final Long reorgLoggingThreshold = 6L;
 
-  // Miner options group
-  @CommandLine.ArgGroup(validate = false, heading = "@|bold Miner Options|@%n")
-  MinerOptionGroup minerOptionGroup = new MinerOptionGroup();
-
-  static class MinerOptionGroup {
-    @Option(
-        names = {"--miner-enabled"},
-        description = "Set if node will perform mining (default: ${DEFAULT-VALUE})")
-    private final Boolean isMiningEnabled = false;
-
-    @Option(
-        names = {"--miner-stratum-enabled"},
-        description = "Set if node will perform Stratum mining (default: ${DEFAULT-VALUE})")
-    private final Boolean iStratumMiningEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @Option(
-        names = {"--miner-stratum-host"},
-        description = "Host for Stratum network mining service (default: ${DEFAULT-VALUE})")
-    private String stratumNetworkInterface = "0.0.0.0";
-
-    @Option(
-        names = {"--miner-stratum-port"},
-        description = "Stratum port binding (default: ${DEFAULT-VALUE})")
-    private final Integer stratumPort = 8008;
-
-    @Option(
-        names = {"--miner-coinbase"},
-        description =
-            "Account to which mining rewards are paid. You must specify a valid coinbase if "
-                + "mining is enabled using --miner-enabled option",
-        arity = "1")
-    private final Address coinbase = null;
-
-    @Option(
-        names = {"--miner-extra-data"},
-        description =
-            "A hex string representing the (32) bytes to be included in the extra data "
-                + "field of a mined block (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Bytes extraData = DEFAULT_EXTRA_DATA;
-  }
-
-  @Option(
-      names = {"--min-gas-price"},
-      description =
-          "Minimum price (in Wei) offered by a transaction for it to be included in a mined "
-              + "block (default: ${DEFAULT-VALUE})",
-      arity = "1")
-  private final Wei minTransactionGasPrice = DEFAULT_MIN_TRANSACTION_GAS_PRICE;
-
-  @Option(
-      names = {"--rpc-tx-feecap"},
-      description =
-          "Maximum transaction fees (in Wei) accepted for transaction submitted through RPC (default: ${DEFAULT-VALUE})",
-      arity = "1")
-  private final Wei txFeeCap = DEFAULT_RPC_TX_FEE_CAP;
-
-  @Option(
-      names = {"--min-block-occupancy-ratio"},
-      description = "Minimum occupancy ratio for a mined block (default: ${DEFAULT-VALUE})",
-      arity = "1")
-  private final Double minBlockOccupancyRatio = DEFAULT_MIN_BLOCK_OCCUPANCY_RATIO;
-
   @Option(
       names = {"--pruning-enabled"},
       description =
@@ -1129,62 +803,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   // Permission Option Group
   @CommandLine.ArgGroup(validate = false, heading = "@|bold Permissions Options|@%n")
-  PermissionsOptionGroup permissionsOptionGroup = new PermissionsOptionGroup();
-
-  static class PermissionsOptionGroup {
-    @Option(
-        names = {"--permissions-nodes-config-file-enabled"},
-        description = "Enable node level permissions (default: ${DEFAULT-VALUE})")
-    private final Boolean permissionsNodesEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @CommandLine.Option(
-        names = {"--permissions-nodes-config-file"},
-        description =
-            "Node permissioning config TOML file (default: a file named \"permissions_config.toml\" in the Besu data folder)")
-    private String nodePermissionsConfigFile = null;
-
-    @Option(
-        names = {"--permissions-accounts-config-file-enabled"},
-        description = "Enable account level permissions (default: ${DEFAULT-VALUE})")
-    private final Boolean permissionsAccountsEnabled = false;
-
-    @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
-    @CommandLine.Option(
-        names = {"--permissions-accounts-config-file"},
-        description =
-            "Account permissioning config TOML file (default: a file named \"permissions_config.toml\" in the Besu data folder)")
-    private String accountPermissionsConfigFile = null;
-
-    @Option(
-        names = {"--permissions-nodes-contract-address"},
-        description = "Address of the node permissioning smart contract",
-        arity = "1")
-    private final Address permissionsNodesContractAddress = null;
-
-    @Option(
-        names = {"--permissions-nodes-contract-version"},
-        description = "Version of the EEA Node Permissioning interface (default: ${DEFAULT-VALUE})")
-    private final Integer permissionsNodesContractVersion = 1;
-
-    @Option(
-        names = {"--permissions-nodes-contract-enabled"},
-        description =
-            "Enable node level permissions via smart contract (default: ${DEFAULT-VALUE})")
-    private final Boolean permissionsNodesContractEnabled = false;
-
-    @Option(
-        names = {"--permissions-accounts-contract-address"},
-        description = "Address of the account permissioning smart contract",
-        arity = "1")
-    private final Address permissionsAccountsContractAddress = null;
-
-    @Option(
-        names = {"--permissions-accounts-contract-enabled"},
-        description =
-            "Enable account level permissions via smart contract (default: ${DEFAULT-VALUE})")
-    private final Boolean permissionsAccountsContractEnabled = false;
-  }
+  PermissionsOptions permissionsOptions = new PermissionsOptions();
 
   @Option(
       names = {"--revert-reason-enabled"},
@@ -1199,81 +818,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       arity = "*",
       split = ",")
   private final Map<Long, Hash> requiredBlocks = new HashMap<>();
-
-  @Option(
-      names = {"--target-gas-limit"},
-      description =
-          "Sets target gas limit per block. If set, each block's gas limit will approach this setting over time if the current gas limit is different.")
-  private final Long targetGasLimit = null;
-
-  // Tx Pool Option Group
-  @CommandLine.ArgGroup(validate = false, heading = "@|bold Tx Pool Options|@%n")
-  TxPoolOptionGroup txPoolOptionGroup = new TxPoolOptionGroup();
-
-  static class TxPoolOptionGroup {
-    @CommandLine.Option(
-        names = {"--tx-pool-disable-locals"},
-        paramLabel = "<Boolean>",
-        description =
-            "Set to true if transactions sent via RPC should have the same checks and not be prioritized over remote ones (default: ${DEFAULT-VALUE})",
-        fallbackValue = "true",
-        arity = "0..1")
-    private Boolean disableLocalTxs = TransactionPoolConfiguration.DEFAULT_DISABLE_LOCAL_TXS;
-
-    @CommandLine.Option(
-        names = {"--tx-pool-enable-save-restore"},
-        paramLabel = "<Boolean>",
-        description =
-            "Set to true to enable saving the txpool content to file on shutdown and reloading it on startup (default: ${DEFAULT-VALUE})",
-        fallbackValue = "true",
-        arity = "0..1")
-    private Boolean saveRestoreEnabled = TransactionPoolConfiguration.DEFAULT_ENABLE_SAVE_RESTORE;
-
-    @CommandLine.Option(
-        names = {"--tx-pool-limit-by-account-percentage"},
-        paramLabel = "<DOUBLE>",
-        converter = FractionConverter.class,
-        description =
-            "Maximum portion of the transaction pool which a single account may occupy with future transactions (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private Float txPoolLimitByAccountPercentage =
-        TransactionPoolConfiguration.DEFAULT_LIMIT_TX_POOL_BY_ACCOUNT_PERCENTAGE;
-
-    @CommandLine.Option(
-        names = {"--tx-pool-save-file"},
-        paramLabel = "<STRING>",
-        description =
-            "If saving the txpool content is enabled, define a custom path for the save file (default: ${DEFAULT-VALUE} in the data-dir)",
-        arity = "1")
-    private File saveFile = TransactionPoolConfiguration.DEFAULT_SAVE_FILE;
-
-    @Option(
-        names = {"--tx-pool-max-size"},
-        paramLabel = MANDATORY_INTEGER_FORMAT_HELP,
-        description =
-            "Maximum number of pending transactions that will be kept in the transaction pool (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer txPoolMaxSize =
-        TransactionPoolConfiguration.DEFAULT_MAX_PENDING_TRANSACTIONS;
-
-    @Option(
-        names = {"--tx-pool-retention-hours"},
-        paramLabel = MANDATORY_INTEGER_FORMAT_HELP,
-        description =
-            "Maximum retention period of pending transactions in hours (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer pendingTxRetentionPeriod =
-        TransactionPoolConfiguration.DEFAULT_TX_RETENTION_HOURS;
-
-    @Option(
-        names = {"--tx-pool-price-bump"},
-        paramLabel = MANDATORY_INTEGER_FORMAT_HELP,
-        converter = PercentageConverter.class,
-        description =
-            "Price bump percentage to replace an already existing transaction  (default: ${DEFAULT-VALUE})",
-        arity = "1")
-    private final Integer priceBump = TransactionPoolConfiguration.DEFAULT_PRICE_BUMP.getValue();
-  }
 
   @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
   @Option(
@@ -1308,7 +852,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   @Option(
       names = {"--pruning-blocks-retained"},
-      defaultValue = "1024",
       paramLabel = "<INTEGER>",
       description =
           "Minimum number of recent blocks for which to keep entire world state (default: ${DEFAULT-VALUE})",
@@ -1317,7 +860,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   @Option(
       names = {"--pruning-block-confirmations"},
-      defaultValue = "10",
       paramLabel = "<INTEGER>",
       description =
           "Minimum number of confirmations on a block before marking begins (default: ${DEFAULT-VALUE})",
@@ -1331,20 +873,9 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       description = "Path to PID file (optional)")
   private final Path pidPath = null;
 
-  @CommandLine.Option(
-      names = {"--api-gas-price-blocks"},
-      description = "Number of blocks to consider for eth_gasPrice (default: ${DEFAULT-VALUE})")
-  private final Long apiGasPriceBlocks = 100L;
-
-  @CommandLine.Option(
-      names = {"--api-gas-price-percentile"},
-      description = "Percentile value to measure for eth_gasPrice (default: ${DEFAULT-VALUE})")
-  private final Double apiGasPricePercentile = 50.0;
-
-  @CommandLine.Option(
-      names = {"--api-gas-price-max"},
-      description = "Maximum gas price for eth_gasPrice (default: ${DEFAULT-VALUE})")
-  private final Long apiGasPriceMax = 500_000_000_000L;
+  // API Configuration Option Group
+  @CommandLine.ArgGroup(validate = false, heading = "@|bold API Configuration Options|@%n")
+  ApiConfigurationOptions apiConfigurationOptions = new ApiConfigurationOptions();
 
   @CommandLine.Option(
       names = {"--static-nodes-file"},
@@ -1354,10 +885,9 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   private final Path staticNodesFile = null;
 
   @CommandLine.Option(
-      names = {"--rpc-max-logs-range"},
-      description =
-          "Specifies the maximum number of blocks to retrieve logs from via RPC. Must be >=0. 0 specifies no limit  (default: ${DEFAULT-VALUE})")
-  private final Long rpcMaxLogsRange = 5000L;
+      names = {"--cache-last-blocks"},
+      description = "Specifies the number of last blocks to cache  (default: ${DEFAULT-VALUE})")
+  private final Integer numberOfblocksToCache = 0;
 
   @Mixin private P2PTLSConfigOptions p2pTLSConfigOptions;
 
@@ -1373,9 +903,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   private MetricsConfiguration metricsConfiguration;
   private Optional<PermissioningConfiguration> permissioningConfiguration;
   private Optional<TLSConfiguration> p2pTLSConfiguration;
+  private DataStorageConfiguration dataStorageConfiguration;
   private Collection<EnodeURL> staticNodes;
   private BesuController besuController;
-  private BesuConfiguration pluginCommonConfiguration;
+  private BesuConfigurationImpl pluginCommonConfiguration;
+  private MiningParameters miningParameters;
 
   private BesuComponent besuComponent;
   private final Supplier<ObservableMetricsSystem> metricsSystem =
@@ -1387,8 +919,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   private Vertx vertx;
   private EnodeDnsConfiguration enodeDnsConfiguration;
   private KeyValueStorageProvider keyValueStorageProvider;
-  /** Sets GoQuorum compatibility mode. */
-  protected Boolean isGoQuorumCompatibilityMode = false;
 
   /**
    * Besu command constructor.
@@ -1426,7 +956,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         new PrivacyPluginServiceImpl(),
         new PkiBlockCreationConfigurationProvider(),
         new RpcEndpointServiceImpl(),
-        new TransactionSelectionServiceImpl());
+        new TransactionSelectionServiceImpl(),
+        new PluginTransactionValidatorServiceImpl());
   }
 
   /**
@@ -1447,6 +978,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
    * @param pkiBlockCreationConfigProvider instance of PkiBlockCreationConfigurationProvider
    * @param rpcEndpointServiceImpl instance of RpcEndpointServiceImpl
    * @param transactionSelectionServiceImpl instance of TransactionSelectionServiceImpl
+   * @param transactionValidatorServiceImpl instance of TransactionValidatorServiceImpl
    */
   @VisibleForTesting
   protected BesuCommand(
@@ -1464,7 +996,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       final PrivacyPluginServiceImpl privacyPluginService,
       final PkiBlockCreationConfigurationProvider pkiBlockCreationConfigProvider,
       final RpcEndpointServiceImpl rpcEndpointServiceImpl,
-      final TransactionSelectionServiceImpl transactionSelectionServiceImpl) {
+      final TransactionSelectionServiceImpl transactionSelectionServiceImpl,
+      final PluginTransactionValidatorServiceImpl transactionValidatorServiceImpl) {
     this.besuComponent = besuComponent;
     this.logger = besuComponent.getBesuCommandLogger();
     this.rlpBlockImporter = rlpBlockImporter;
@@ -1478,11 +1011,12 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     this.securityModuleService = securityModuleService;
     this.permissioningService = permissioningService;
     this.privacyPluginService = privacyPluginService;
-    pluginCommonConfiguration = new BesuCommandConfigurationService();
+    this.pluginCommonConfiguration = new BesuConfigurationImpl();
     besuPluginContext.addService(BesuConfiguration.class, pluginCommonConfiguration);
     this.pkiBlockCreationConfigProvider = pkiBlockCreationConfigProvider;
     this.rpcEndpointServiceImpl = rpcEndpointServiceImpl;
     this.transactionSelectionServiceImpl = transactionSelectionServiceImpl;
+    this.transactionValidatorServiceImpl = transactionValidatorServiceImpl;
   }
 
   /**
@@ -1503,6 +1037,9 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       final String... args) {
 
     toCommandLine();
+
+    // use terminal width for usage message
+    commandLine.getCommandSpec().usageMessage().autoWidth(true);
 
     handleStableOptions();
     addSubCommands(in);
@@ -1528,16 +1065,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     if (network != null && network.isDeprecated()) {
       logger.warn(NetworkDeprecationMessage.generate(network));
     }
-
     try {
       configureLogging(true);
-      // Set the goquorum compatibility mode based on the genesis file
+
       if (genesisFile != null) {
         genesisConfigOptions = readGenesisConfigOptions();
-
-        if (genesisConfigOptions.isQuorum()) {
-          enableGoQuorumCompatibilityMode();
-        }
       }
 
       // set merge config on the basis of genesis config
@@ -1553,9 +1085,15 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       vertx = createVertx(createVertxOptions(metricsSystem.get()));
 
       validateOptions();
+
       configure();
+
+      // If we're not running against a named network, or if version compat protection has been
+      // explicitly enabled, perform compatibility check
+      VersionMetadata.versionCompatibilityChecks(versionCompatibilityProtection, dataDir());
+
       configureNativeLibs();
-      besuController = initController();
+      besuController = buildController();
 
       besuPluginContext.beforeExternalServices();
 
@@ -1571,12 +1109,13 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       runner.awaitStop();
 
     } catch (final Exception e) {
+      logger.error("Failed to start Besu", e);
       throw new ParameterException(this.commandLine, e.getMessage(), e);
     }
   }
 
   @VisibleForTesting
-  void setBesuConfiguration(final BesuConfiguration pluginCommonConfiguration) {
+  void setBesuConfiguration(final BesuConfigurationImpl pluginCommonConfiguration) {
     this.pluginCommonConfiguration = pluginCommonConfiguration;
   }
 
@@ -1588,6 +1127,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             jsonBlockImporterFactory,
             rlpBlockExporterFactory,
             commandLine.getOut()));
+    commandLine.addSubcommand(
+        TxParseSubCommand.COMMAND_NAME, new TxParseSubCommand(commandLine.getOut()));
     commandLine.addSubcommand(
         PublicKeySubCommand.COMMAND_NAME, new PublicKeySubCommand(commandLine.getOut()));
     commandLine.addSubcommand(
@@ -1646,8 +1187,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             .put("NAT Configuration", unstableNatOptions)
             .put("Privacy Plugin Configuration", unstablePrivacyPluginOptions)
             .put("Synchronizer", unstableSynchronizerOptions)
-            .put("TransactionPool", unstableTransactionPoolOptions)
-            .put("Mining", unstableMiningOptions)
             .put("Native Library", unstableNativeLibraryOptions)
             .put("EVM Options", unstableEvmOptions)
             .put("IPC Options", unstableIpcOptions)
@@ -1667,6 +1206,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     besuPluginContext.addService(RpcEndpointService.class, rpcEndpointServiceImpl);
     besuPluginContext.addService(
         TransactionSelectionService.class, transactionSelectionServiceImpl);
+    besuPluginContext.addService(
+        PluginTransactionValidatorService.class, transactionValidatorServiceImpl);
 
     // register built-in plugins
     rocksDBPlugin = new RocksDBPlugin();
@@ -1787,7 +1328,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             "--privacy-marker-transaction-signing-key-file can not be used in conjunction with a plugin that specifies a PrivateMarkerTransactionFactory");
       }
 
-      if (Wei.ZERO.compareTo(minTransactionGasPrice) < 0
+      if (Wei.ZERO.compareTo(getMiningParameters().getMinTransactionGasPrice()) < 0
           && (privacyOptionGroup.privateMarkerTransactionSigningKeyPath == null
               && (privacyPluginService == null
                   || privacyPluginService.getPrivateMarkerTransactionFactory() == null))) {
@@ -1807,8 +1348,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       }
 
       if (unstablePrivacyPluginOptions.isPrivacyPluginEnabled()
-          && (privacyOptionGroup.isFlexiblePrivacyGroupsEnabled
-              || privacyOptionGroup.isOnchainPrivacyGroupsEnabled)) {
+          && privacyOptionGroup.isFlexiblePrivacyGroupsEnabled) {
         throw new ParameterException(
             commandLine, "Privacy Plugin can not be used with flexible privacy groups");
       }
@@ -1860,7 +1400,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     }
 
     if (unstableNativeLibraryOptions.getNativeModExp()
-        && BigIntegerModularExponentiationPrecompiledContract.isNative()) {
+        && BigIntegerModularExponentiationPrecompiledContract.maybeEnableNative()) {
       logger.info("Using the native implementation of modexp");
     } else {
       BigIntegerModularExponentiationPrecompiledContract.disableNative();
@@ -1883,17 +1423,12 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       logger.info("Using the Java implementation of the blake2bf algorithm");
     }
 
-    if (getActualGenesisConfigOptions().getCancunTime().isPresent()) {
-      // if custom genesis provided, then trusted setup file is mandatory
-      if (genesisFile != null && kzgTrustedSetupFile == null) {
-        throw new ParameterException(
-            this.commandLine,
-            "--kzg-trusted-setup is mandatory when providing a custom genesis that support data blobs");
-      }
+    if (getActualGenesisConfigOptions().getCancunTime().isPresent()
+        || getActualGenesisConfigOptions().getPragueTime().isPresent()) {
       if (kzgTrustedSetupFile != null) {
         KZGPointEvalPrecompiledContract.init(kzgTrustedSetupFile);
       } else {
-        KZGPointEvalPrecompiledContract.init(network.name());
+        KZGPointEvalPrecompiledContract.init();
       }
     } else if (kzgTrustedSetupFile != null) {
       throw new ParameterException(
@@ -1912,10 +1447,27 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     validateDnsOptionsParams();
     ensureValidPeerBoundParams();
     validateRpcOptionsParams();
+    validateRpcWsOptions();
     validateChainDataPruningParams();
     validatePostMergeCheckpointBlockRequirements();
+    validateTransactionPoolOptions();
+    validateDataStorageOptions();
+    validateGraphQlOptions();
+    validateApiOptions();
     p2pTLSConfigOptions.checkP2PTLSOptionsDependencies(logger, commandLine);
     pkiBlockCreationOptions.checkPkiBlockCreationOptionsDependencies(logger, commandLine);
+  }
+
+  private void validateApiOptions() {
+    apiConfigurationOptions.validate(commandLine, logger);
+  }
+
+  private void validateTransactionPoolOptions() {
+    transactionPoolOptions.validate(commandLine, getActualGenesisConfigOptions());
+  }
+
+  private void validateDataStorageOptions() {
+    dataStorageOptions.validate(commandLine);
   }
 
   private void validateRequiredOptions() {
@@ -1931,35 +1483,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             });
   }
 
-  @SuppressWarnings("ConstantConditions")
   private void validateMiningParams() {
-    if (Boolean.TRUE.equals(minerOptionGroup.isMiningEnabled)
-        && minerOptionGroup.coinbase == null) {
-      throw new ParameterException(
-          this.commandLine,
-          "Unable to mine without a valid coinbase. Either disable mining (remove --miner-enabled) "
-              + "or specify the beneficiary of mining (via --miner-coinbase <Address>)");
-    }
-    if (Boolean.FALSE.equals(minerOptionGroup.isMiningEnabled)
-        && Boolean.TRUE.equals(minerOptionGroup.iStratumMiningEnabled)) {
-      throw new ParameterException(
-          this.commandLine,
-          "Unable to mine with Stratum if mining is disabled. Either disable Stratum mining (remove --miner-stratum-enabled) "
-              + "or specify mining is enabled (--miner-enabled)");
-    }
-    if (unstableMiningOptions.getPosBlockCreationMaxTime() <= 0
-        || unstableMiningOptions.getPosBlockCreationMaxTime()
-            > MiningParameters.DEFAULT_POS_BLOCK_CREATION_MAX_TIME) {
-      throw new ParameterException(
-          this.commandLine, "--Xpos-block-creation-max-time must be positive and ≤ 12000");
-    }
-
-    if (unstableMiningOptions.getPosBlockCreationRepetitionMinDuration() <= 0
-        || unstableMiningOptions.getPosBlockCreationRepetitionMinDuration() > 2000) {
-      throw new ParameterException(
-          this.commandLine,
-          "--Xpos-block-creation-repetition-min-duration must be positive and ≤ 2000");
-    }
+    miningOptions.validate(commandLine, getActualGenesisConfigOptions(), isMergeEnabled(), logger);
   }
 
   /**
@@ -1976,6 +1501,10 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     } catch (final UnknownHostException | SocketException e) {
       throw new ParameterException(commandLine, failMessage, e);
     }
+  }
+
+  private void validateGraphQlOptions() {
+    graphQlOptions.validate(logger, commandLine);
   }
 
   @SuppressWarnings("ConstantConditions")
@@ -2018,18 +1547,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
 
   private void ensureValidPeerBoundParams() {
     maxPeers = p2PDiscoveryOptionGroup.maxPeers;
-    peersLowerBound = unstableNetworkingOptions.toDomainObject().getPeerLowerBound();
-    if (peersLowerBound > maxPeers) {
-      logger.warn(
-          "`--Xp2p-peer-lower-bound` "
-              + peersLowerBound
-              + " must not exceed --max-peers "
-              + maxPeers);
-      logger.warn("setting --Xp2p-peer-lower-bound=" + maxPeers);
-      peersLowerBound = maxPeers;
-    }
     final Boolean isLimitRemoteWireConnectionsEnabled =
         p2PDiscoveryOptionGroup.isLimitRemoteWireConnectionsEnabled;
+    if (isOptionSet(commandLine, PEER_LOWER_BOUND_FLAG)) {
+      logger.warn(PEER_LOWER_BOUND_FLAG + " is deprecated and will be removed soon.");
+    }
     if (isLimitRemoteWireConnectionsEnabled) {
       final float fraction =
           Fraction.fromPercentage(p2PDiscoveryOptionGroup.maxRemoteConnectionsPercentage)
@@ -2049,45 +1571,16 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             Arrays.stream(RpcApis.values())
                     .anyMatch(builtInApi -> apiName.equals(builtInApi.name()))
                 || rpcEndpointServiceImpl.hasNamespace(apiName);
+    jsonRpcHttpOptions.validate(logger, commandLine, configuredApis);
+  }
 
-    if (!jsonRPCHttpOptionGroup.rpcHttpApis.stream().allMatch(configuredApis)) {
-      final List<String> invalidHttpApis =
-          new ArrayList<String>(jsonRPCHttpOptionGroup.rpcHttpApis);
-      invalidHttpApis.removeAll(VALID_APIS);
-      throw new ParameterException(
-          this.commandLine,
-          "Invalid value for option '--rpc-http-api': invalid entries found "
-              + invalidHttpApis.toString());
-    }
-
-    if (!jsonRPCWebsocketOptionGroup.rpcWsApis.stream().allMatch(configuredApis)) {
-      final List<String> invalidWsApis =
-          new ArrayList<String>(jsonRPCWebsocketOptionGroup.rpcWsApis);
-      invalidWsApis.removeAll(VALID_APIS);
-      throw new ParameterException(
-          this.commandLine,
-          "Invalid value for option '--rpc-ws-api': invalid entries found " + invalidWsApis);
-    }
-
-    final boolean validHttpApiMethods =
-        jsonRPCHttpOptionGroup.rpcHttpApiMethodsNoAuth.stream()
-            .allMatch(RpcMethod::rpcMethodExists);
-
-    if (!validHttpApiMethods) {
-      throw new ParameterException(
-          this.commandLine,
-          "Invalid value for option '--rpc-http-api-methods-no-auth', options must be valid RPC methods");
-    }
-
-    final boolean validWsApiMethods =
-        jsonRPCWebsocketOptionGroup.rpcWsApiMethodsNoAuth.stream()
-            .allMatch(RpcMethod::rpcMethodExists);
-
-    if (!validWsApiMethods) {
-      throw new ParameterException(
-          this.commandLine,
-          "Invalid value for option '--rpc-ws-api-methods-no-auth', options must be valid RPC methods");
-    }
+  private void validateRpcWsOptions() {
+    final Predicate<String> configuredApis =
+        apiName ->
+            Arrays.stream(RpcApis.values())
+                    .anyMatch(builtInApi -> apiName.equals(builtInApi.name()))
+                || rpcEndpointServiceImpl.hasNamespace(apiName);
+    rpcWebsocketOptions.validate(logger, commandLine, configuredApis);
   }
 
   private void validateChainDataPruningParams() {
@@ -2132,40 +1625,15 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             "--p2p-port",
             "--remote-connections-max-percentage"));
 
-    // Check that block producer options work
-    if (!isMergeEnabled()) {
-      CommandLineUtils.checkOptionDependencies(
-          logger,
-          commandLine,
-          "--miner-enabled",
-          !minerOptionGroup.isMiningEnabled,
-          asList(
-              "--miner-coinbase",
-              "--min-gas-price",
-              "--min-block-occupancy-ratio",
-              "--miner-extra-data"));
+    if (SyncMode.isFullSync(getDefaultSyncModeIfNotSet())
+        && isOptionSet(commandLine, "--sync-min-peers")) {
+      logger.warn("--sync-min-peers is ignored in FULL sync-mode");
     }
-    // Check that mining options are able to work
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--miner-enabled",
-        !minerOptionGroup.isMiningEnabled,
-        asList(
-            "--miner-stratum-enabled",
-            "--Xminer-remote-sealers-limit",
-            "--Xminer-remote-sealers-hashrate-ttl"));
 
     CommandLineUtils.failIfOptionDoesntMeetRequirement(
         commandLine,
-        "--fast-sync-min-peers can't be used with FULL sync-mode",
-        !SyncMode.isFullSync(getDefaultSyncModeIfNotSet()),
-        singletonList("--fast-sync-min-peers"));
-
-    CommandLineUtils.failIfOptionDoesntMeetRequirement(
-        commandLine,
-        "--Xcheckpoint-post-merge-enabled can only be used with X_CHECKPOINT sync-mode",
-        SyncMode.X_CHECKPOINT.equals(getDefaultSyncModeIfNotSet()),
+        "--Xcheckpoint-post-merge-enabled can only be used with CHECKPOINT sync-mode",
+        SyncMode.isCheckpointSync(getDefaultSyncModeIfNotSet()),
         singletonList("--Xcheckpoint-post-merge-enabled"));
 
     CommandLineUtils.failIfOptionDoesntMeetRequirement(
@@ -2184,11 +1652,16 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
           "--security-module=" + DEFAULT_SECURITY_MODULE);
     }
 
-    if (Boolean.TRUE.equals(privacyOptionGroup.isOnchainPrivacyGroupsEnabled)) {
-      logger.warn(
-          DEPRECATION_WARNING_MSG,
-          "--privacy-onchain-groups-enabled",
-          "--privacy-flexible-groups-enabled");
+    if (isPruningEnabled()) {
+      if (dataStorageOptions
+          .toDomainObject()
+          .getDataStorageFormat()
+          .equals(DataStorageFormat.BONSAI)) {
+        logger.warn("Forest pruning is ignored with Bonsai data storage format.");
+      } else {
+        logger.warn(
+            "Forest pruning is deprecated and will be removed soon. To save disk space consider switching to Bonsai data storage format.");
+      }
     }
   }
 
@@ -2196,32 +1669,38 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     checkPortClash();
     checkIfRequiredPortsAreAvailable();
     syncMode = getDefaultSyncModeIfNotSet();
+    versionCompatibilityProtection = getDefaultVersionCompatibilityProtectionIfNotSet();
 
     ethNetworkConfig = updateNetworkConfig(network);
 
-    checkGoQuorumCompatibilityConfig(ethNetworkConfig);
-
     jsonRpcConfiguration =
-        jsonRpcConfiguration(
-            jsonRPCHttpOptionGroup.rpcHttpPort, jsonRPCHttpOptionGroup.rpcHttpApis, hostsAllowlist);
+        jsonRpcHttpOptions.jsonRpcConfiguration(
+            hostsAllowlist,
+            p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress(),
+            unstableRPCOptions.getHttpTimeoutSec());
     if (isEngineApiEnabled()) {
       engineJsonRpcConfiguration =
           createEngineJsonRpcConfiguration(
               engineRPCOptionGroup.engineRpcPort, engineRPCOptionGroup.engineHostsAllowlist);
     }
     p2pTLSConfiguration = p2pTLSConfigOptions.p2pTLSConfiguration(commandLine);
-    graphQLConfiguration = graphQLConfiguration();
+    graphQLConfiguration =
+        graphQlOptions.graphQLConfiguration(
+            hostsAllowlist,
+            p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress(),
+            unstableRPCOptions.getHttpTimeoutSec());
     webSocketConfiguration =
-        webSocketConfiguration(
-            jsonRPCWebsocketOptionGroup.rpcWsPort,
-            jsonRPCWebsocketOptionGroup.rpcWsApis,
-            hostsAllowlist);
+        rpcWebsocketOptions.webSocketConfiguration(
+            hostsAllowlist,
+            p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress(),
+            unstableRPCOptions.getWsTimeoutSec());
     jsonRpcIpcConfiguration =
         jsonRpcIpcConfiguration(
             unstableIpcOptions.isEnabled(),
             unstableIpcOptions.getIpcPath(),
             unstableIpcOptions.getRpcIpcApis());
-    apiConfiguration = apiConfiguration();
+    apiConfiguration = apiConfigurationOptions.apiConfiguration(getMiningParameters());
+    dataStorageConfiguration = getDataStorageConfiguration();
     // hostsWhitelist is a hidden option. If it is specified, add the list to hostAllowlist
     if (!hostsWhitelist.isEmpty()) {
       // if allowlist == default values, remove the default values
@@ -2248,9 +1727,17 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     instantiateSignatureAlgorithmFactory();
 
     logger.info(generateConfigurationOverview());
-    logger.info("Connecting to {} static nodes.", staticNodes.size());
-    logger.trace("Static Nodes = {}", staticNodes);
     logger.info("Security Module: {}", securityModuleName);
+  }
+
+  private Optional<PermissioningConfiguration> permissioningConfiguration() throws Exception {
+    return permissionsOptions.permissioningConfiguration(
+        jsonRpcHttpOptions,
+        rpcWebsocketOptions,
+        getEnodeDnsConfiguration(),
+        dataDir(),
+        logger,
+        commandLine);
   }
 
   private JsonRpcIpcConfiguration jsonRpcIpcConfiguration(
@@ -2269,15 +1756,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       final Collection<EnodeURL> enodeAddresses,
       final LocalPermissioningConfiguration permissioningConfiguration) {
     try {
-      PermissioningConfigurationValidator.areAllNodesAreInAllowlist(
+      PermissioningConfigurationValidator.areAllNodesInAllowlist(
           enodeAddresses, permissioningConfiguration);
     } catch (final Exception e) {
       throw new ParameterException(this.commandLine, e.getMessage());
     }
-  }
-
-  private BesuController initController() {
-    return buildController();
   }
 
   /**
@@ -2301,37 +1784,23 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
    * @return instance of BesuControllerBuilder
    */
   public BesuControllerBuilder getControllerBuilder() {
+    pluginCommonConfiguration.init(
+        dataDir(),
+        dataDir().resolve(DATABASE_PATH),
+        getDataStorageConfiguration(),
+        getMiningParameters());
     final KeyValueStorageProvider storageProvider = keyValueStorageProvider(keyValueStorageName);
-    final Optional<TransactionSelectorFactory> transactionSelectorFactory =
-        getTransactionSelectorFactory();
     return controllerBuilderFactory
         .fromEthNetworkConfig(
             updateNetworkConfig(network), genesisConfigOverrides, getDefaultSyncModeIfNotSet())
         .synchronizerConfiguration(buildSyncConfig())
         .ethProtocolConfiguration(unstableEthProtocolOptions.toDomainObject())
         .networkConfiguration(unstableNetworkingOptions.toDomainObject())
-        .transactionSelectorFactory(transactionSelectorFactory)
+        .transactionSelectorFactory(getTransactionSelectorFactory())
+        .pluginTransactionValidatorFactory(getPluginTransactionValidatorFactory())
         .dataDirectory(dataDir())
-        .miningParameters(
-            new MiningParameters.Builder()
-                .coinbase(minerOptionGroup.coinbase)
-                .targetGasLimit(targetGasLimit)
-                .minTransactionGasPrice(minTransactionGasPrice)
-                .extraData(minerOptionGroup.extraData)
-                .miningEnabled(minerOptionGroup.isMiningEnabled)
-                .stratumMiningEnabled(minerOptionGroup.iStratumMiningEnabled)
-                .stratumNetworkInterface(minerOptionGroup.stratumNetworkInterface)
-                .stratumPort(minerOptionGroup.stratumPort)
-                .stratumExtranonce(unstableMiningOptions.getStratumExtranonce())
-                .minBlockOccupancyRatio(minBlockOccupancyRatio)
-                .remoteSealersLimit(unstableMiningOptions.getRemoteSealersLimit())
-                .remoteSealersTimeToLive(unstableMiningOptions.getRemoteSealersTimeToLive())
-                .powJobTimeToLive(unstableMiningOptions.getPowJobTimeToLive())
-                .maxOmmerDepth(unstableMiningOptions.getMaxOmmersDepth())
-                .posBlockCreationMaxTime(unstableMiningOptions.getPosBlockCreationMaxTime())
-                .posBlockCreationRepetitionMinDuration(
-                    unstableMiningOptions.getPosBlockCreationRepetitionMinDuration())
-                .build())
+        .dataStorageConfiguration(getDataStorageConfiguration())
+        .miningParameters(getMiningParameters())
         .transactionPoolConfiguration(buildTransactionPoolConfiguration())
         .nodeKey(new NodeKey(securityModule()))
         .metricsSystem(metricsSystem.get())
@@ -2346,53 +1815,42 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             new PrunerConfiguration(pruningBlockConfirmations, pruningBlocksRetained))
         .genesisConfigOverrides(genesisConfigOverrides)
         .gasLimitCalculator(
-            Optional.ofNullable(targetGasLimit)
-                .<GasLimitCalculator>map(z -> new FrontierTargetingGasLimitCalculator())
-                .orElse(GasLimitCalculator.constant()))
+            getMiningParameters().getTargetGasLimit().isPresent()
+                ? new FrontierTargetingGasLimitCalculator()
+                : GasLimitCalculator.constant())
         .requiredBlocks(requiredBlocks)
         .reorgLoggingThreshold(reorgLoggingThreshold)
         .evmConfiguration(unstableEvmOptions.toDomainObject())
-        .dataStorageConfiguration(dataStorageOptions.toDomainObject())
         .maxPeers(p2PDiscoveryOptionGroup.maxPeers)
-        .lowerBoundPeers(peersLowerBound)
         .maxRemotelyInitiatedPeers(maxRemoteInitiatedPeers)
         .randomPeerPriority(p2PDiscoveryOptionGroup.randomPeerPriority)
-        .chainPruningConfiguration(unstableChainPruningOptions.toDomainObject());
+        .chainPruningConfiguration(unstableChainPruningOptions.toDomainObject())
+        .cacheLastBlocks(numberOfblocksToCache);
   }
 
-  @NotNull
-  private Optional<TransactionSelectorFactory> getTransactionSelectorFactory() {
+  @Nonnull
+  private Optional<PluginTransactionSelectorFactory> getTransactionSelectorFactory() {
     final Optional<TransactionSelectionService> txSelectionService =
         besuPluginContext.getService(TransactionSelectionService.class);
     return txSelectionService.isPresent() ? txSelectionService.get().get() : Optional.empty();
   }
 
-  private GraphQLConfiguration graphQLConfiguration() {
-
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--graphql-http-enabled",
-        !graphQlOptionGroup.isGraphQLHttpEnabled,
-        asList("--graphql-http-cors-origins", "--graphql-http-host", "--graphql-http-port"));
-    final GraphQLConfiguration graphQLConfiguration = GraphQLConfiguration.createDefault();
-    graphQLConfiguration.setEnabled(graphQlOptionGroup.isGraphQLHttpEnabled);
-    graphQLConfiguration.setHost(
-        Strings.isNullOrEmpty(graphQlOptionGroup.graphQLHttpHost)
-            ? p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress()
-            : graphQlOptionGroup.graphQLHttpHost);
-    graphQLConfiguration.setPort(graphQlOptionGroup.graphQLHttpPort);
-    graphQLConfiguration.setHostsAllowlist(hostsAllowlist);
-    graphQLConfiguration.setCorsAllowedDomains(graphQlOptionGroup.graphQLHttpCorsAllowedOrigins);
-    graphQLConfiguration.setHttpTimeoutSec(unstableRPCOptions.getHttpTimeoutSec());
-
-    return graphQLConfiguration;
+  private PluginTransactionValidatorFactory getPluginTransactionValidatorFactory() {
+    final Optional<PluginTransactionValidatorService> txSValidatorService =
+        besuPluginContext.getService(PluginTransactionValidatorService.class);
+    return txSValidatorService.map(PluginTransactionValidatorService::get).orElse(null);
   }
 
   private JsonRpcConfiguration createEngineJsonRpcConfiguration(
-      final Integer listenPort, final List<String> allowCallsFrom) {
+      final Integer engineListenPort, final List<String> allowCallsFrom) {
+    jsonRpcHttpOptions.checkDependencies(logger, commandLine);
     final JsonRpcConfiguration engineConfig =
-        jsonRpcConfiguration(listenPort, Arrays.asList("ENGINE", "ETH"), allowCallsFrom);
+        jsonRpcHttpOptions.jsonRpcConfiguration(
+            allowCallsFrom,
+            p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress(),
+            unstableRPCOptions.getWsTimeoutSec());
+    engineConfig.setPort(engineListenPort);
+    engineConfig.setRpcApis(Arrays.asList("ENGINE", "ETH"));
     engineConfig.setEnabled(isEngineApiEnabled());
     if (!engineRPCOptionGroup.isEngineAuthDisabled) {
       engineConfig.setAuthenticationEnabled(true);
@@ -2408,115 +1866,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     return engineConfig;
   }
 
-  private JsonRpcConfiguration jsonRpcConfiguration(
-      final Integer listenPort, final List<String> apiGroups, final List<String> allowCallsFrom) {
-    checkRpcTlsClientAuthOptionsDependencies();
-    checkRpcTlsOptionsDependencies();
-    checkRpcHttpOptionsDependencies();
-
-    if (jsonRPCHttpOptionGroup.isRpcHttpAuthenticationEnabled) {
-      CommandLineUtils.checkOptionDependencies(
-          logger,
-          commandLine,
-          "--rpc-http-authentication-public-key-file",
-          jsonRPCHttpOptionGroup.rpcHttpAuthenticationPublicKeyFile == null,
-          asList("--rpc-http-authentication-jwt-algorithm"));
-    }
-
-    if (jsonRPCHttpOptionGroup.isRpcHttpAuthenticationEnabled
-        && rpcHttpAuthenticationCredentialsFile() == null
-        && jsonRPCHttpOptionGroup.rpcHttpAuthenticationPublicKeyFile == null) {
-      throw new ParameterException(
-          commandLine,
-          "Unable to authenticate JSON-RPC HTTP endpoint without a supplied credentials file or authentication public key file");
-    }
-
-    final JsonRpcConfiguration jsonRpcConfiguration = JsonRpcConfiguration.createDefault();
-    jsonRpcConfiguration.setEnabled(jsonRPCHttpOptionGroup.isRpcHttpEnabled);
-    jsonRpcConfiguration.setHost(
-        Strings.isNullOrEmpty(jsonRPCHttpOptionGroup.rpcHttpHost)
-            ? p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress()
-            : jsonRPCHttpOptionGroup.rpcHttpHost);
-    jsonRpcConfiguration.setPort(listenPort);
-    jsonRpcConfiguration.setMaxActiveConnections(jsonRPCHttpOptionGroup.rpcHttpMaxConnections);
-    jsonRpcConfiguration.setCorsAllowedDomains(jsonRPCHttpOptionGroup.rpcHttpCorsAllowedOrigins);
-    jsonRpcConfiguration.setRpcApis(apiGroups.stream().distinct().collect(Collectors.toList()));
-    jsonRpcConfiguration.setNoAuthRpcApis(
-        jsonRPCHttpOptionGroup.rpcHttpApiMethodsNoAuth.stream()
-            .distinct()
-            .collect(Collectors.toList()));
-    jsonRpcConfiguration.setHostsAllowlist(allowCallsFrom);
-    jsonRpcConfiguration.setAuthenticationEnabled(
-        jsonRPCHttpOptionGroup.isRpcHttpAuthenticationEnabled);
-    jsonRpcConfiguration.setAuthenticationCredentialsFile(rpcHttpAuthenticationCredentialsFile());
-    jsonRpcConfiguration.setAuthenticationPublicKeyFile(
-        jsonRPCHttpOptionGroup.rpcHttpAuthenticationPublicKeyFile);
-    jsonRpcConfiguration.setAuthenticationAlgorithm(
-        jsonRPCHttpOptionGroup.rpcHttpAuthenticationAlgorithm);
-    jsonRpcConfiguration.setTlsConfiguration(rpcHttpTlsConfiguration());
-    jsonRpcConfiguration.setHttpTimeoutSec(unstableRPCOptions.getHttpTimeoutSec());
-    jsonRpcConfiguration.setMaxBatchSize(jsonRPCHttpOptionGroup.rpcHttpMaxBatchSize);
-    jsonRpcConfiguration.setMaxRequestContentLength(
-        jsonRPCHttpOptionGroup.rpcHttpMaxRequestContentLength);
-    return jsonRpcConfiguration;
-  }
-
-  private void checkRpcHttpOptionsDependencies() {
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--rpc-http-enabled",
-        !jsonRPCHttpOptionGroup.isRpcHttpEnabled,
-        asList(
-            "--rpc-http-api",
-            "--rpc-http-apis",
-            "--rpc-http-api-method-no-auth",
-            "--rpc-http-api-methods-no-auth",
-            "--rpc-http-cors-origins",
-            "--rpc-http-host",
-            "--rpc-http-port",
-            "--rpc-http-max-active-connections",
-            "--rpc-http-authentication-enabled",
-            "--rpc-http-authentication-credentials-file",
-            "--rpc-http-authentication-public-key-file",
-            "--rpc-http-tls-enabled",
-            "--rpc-http-tls-keystore-file",
-            "--rpc-http-tls-keystore-password-file",
-            "--rpc-http-tls-client-auth-enabled",
-            "--rpc-http-tls-known-clients-file",
-            "--rpc-http-tls-ca-clients-enabled",
-            "--rpc-http-authentication-jwt-algorithm",
-            "--rpc-http-tls-protocols",
-            "--rpc-http-tls-cipher-suite",
-            "--rpc-http-tls-cipher-suites"));
-  }
-
-  private void checkRpcTlsOptionsDependencies() {
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--rpc-http-tls-enabled",
-        !jsonRPCHttpOptionGroup.isRpcHttpTlsEnabled,
-        asList(
-            "--rpc-http-tls-keystore-file",
-            "--rpc-http-tls-keystore-password-file",
-            "--rpc-http-tls-client-auth-enabled",
-            "--rpc-http-tls-known-clients-file",
-            "--rpc-http-tls-ca-clients-enabled",
-            "--rpc-http-tls-protocols",
-            "--rpc-http-tls-cipher-suite",
-            "--rpc-http-tls-cipher-suites"));
-  }
-
-  private void checkRpcTlsClientAuthOptionsDependencies() {
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--rpc-http-tls-client-auth-enabled",
-        !jsonRPCHttpOptionGroup.isRpcHttpTlsClientAuthEnabled,
-        asList("--rpc-http-tls-known-clients-file", "--rpc-http-tls-ca-clients-enabled"));
-  }
-
   private void checkPrivacyTlsOptionsDependencies() {
     CommandLineUtils.checkOptionDependencies(
         logger,
@@ -2527,149 +1876,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             "--privacy-tls-keystore-file",
             "--privacy-tls-keystore-password-file",
             "--privacy-tls-known-enclave-file"));
-  }
-
-  private Optional<TlsConfiguration> rpcHttpTlsConfiguration() {
-    if (!isRpcTlsConfigurationRequired()) {
-      return Optional.empty();
-    }
-
-    if (jsonRPCHttpOptionGroup.rpcHttpTlsKeyStoreFile == null) {
-      throw new ParameterException(
-          commandLine, "Keystore file is required when TLS is enabled for JSON-RPC HTTP endpoint");
-    }
-
-    if (jsonRPCHttpOptionGroup.rpcHttpTlsKeyStorePasswordFile == null) {
-      throw new ParameterException(
-          commandLine,
-          "File containing password to unlock keystore is required when TLS is enabled for JSON-RPC HTTP endpoint");
-    }
-
-    if (jsonRPCHttpOptionGroup.isRpcHttpTlsClientAuthEnabled
-        && !jsonRPCHttpOptionGroup.isRpcHttpTlsCAClientsEnabled
-        && jsonRPCHttpOptionGroup.rpcHttpTlsKnownClientsFile == null) {
-      throw new ParameterException(
-          commandLine,
-          "Known-clients file must be specified or CA clients must be enabled when TLS client authentication is enabled for JSON-RPC HTTP endpoint");
-    }
-
-    jsonRPCHttpOptionGroup.rpcHttpTlsProtocols.retainAll(getJDKEnabledProtocols());
-    if (jsonRPCHttpOptionGroup.rpcHttpTlsProtocols.isEmpty()) {
-      throw new ParameterException(
-          commandLine,
-          "No valid TLS protocols specified (the following protocols are enabled: "
-              + getJDKEnabledProtocols()
-              + ")");
-    }
-
-    for (final String cipherSuite : jsonRPCHttpOptionGroup.rpcHttpTlsCipherSuites) {
-      if (!getJDKEnabledCipherSuites().contains(cipherSuite)) {
-        throw new ParameterException(
-            commandLine, "Invalid TLS cipher suite specified " + cipherSuite);
-      }
-    }
-
-    jsonRPCHttpOptionGroup.rpcHttpTlsCipherSuites.retainAll(getJDKEnabledCipherSuites());
-
-    return Optional.of(
-        TlsConfiguration.Builder.aTlsConfiguration()
-            .withKeyStorePath(jsonRPCHttpOptionGroup.rpcHttpTlsKeyStoreFile)
-            .withKeyStorePasswordSupplier(
-                new FileBasedPasswordProvider(
-                    jsonRPCHttpOptionGroup.rpcHttpTlsKeyStorePasswordFile))
-            .withClientAuthConfiguration(rpcHttpTlsClientAuthConfiguration())
-            .withSecureTransportProtocols(jsonRPCHttpOptionGroup.rpcHttpTlsProtocols)
-            .withCipherSuites(jsonRPCHttpOptionGroup.rpcHttpTlsCipherSuites)
-            .build());
-  }
-
-  private TlsClientAuthConfiguration rpcHttpTlsClientAuthConfiguration() {
-    if (jsonRPCHttpOptionGroup.isRpcHttpTlsClientAuthEnabled) {
-      return TlsClientAuthConfiguration.Builder.aTlsClientAuthConfiguration()
-          .withKnownClientsFile(jsonRPCHttpOptionGroup.rpcHttpTlsKnownClientsFile)
-          .withCaClientsEnabled(jsonRPCHttpOptionGroup.isRpcHttpTlsCAClientsEnabled)
-          .build();
-    }
-
-    return null;
-  }
-
-  private boolean isRpcTlsConfigurationRequired() {
-    return jsonRPCHttpOptionGroup.isRpcHttpEnabled && jsonRPCHttpOptionGroup.isRpcHttpTlsEnabled;
-  }
-
-  private WebSocketConfiguration webSocketConfiguration(
-      final Integer listenPort, final List<String> apiGroups, final List<String> allowCallsFrom) {
-
-    CommandLineUtils.checkOptionDependencies(
-        logger,
-        commandLine,
-        "--rpc-ws-enabled",
-        !jsonRPCWebsocketOptionGroup.isRpcWsEnabled,
-        asList(
-            "--rpc-ws-api",
-            "--rpc-ws-apis",
-            "--rpc-ws-api-method-no-auth",
-            "--rpc-ws-api-methods-no-auth",
-            "--rpc-ws-host",
-            "--rpc-ws-port",
-            "--rpc-ws-max-frame-size",
-            "--rpc-ws-max-active-connections",
-            "--rpc-ws-authentication-enabled",
-            "--rpc-ws-authentication-credentials-file",
-            "--rpc-ws-authentication-public-key-file",
-            "--rpc-ws-authentication-jwt-algorithm"));
-
-    if (jsonRPCWebsocketOptionGroup.isRpcWsAuthenticationEnabled) {
-      CommandLineUtils.checkOptionDependencies(
-          logger,
-          commandLine,
-          "--rpc-ws-authentication-public-key-file",
-          jsonRPCWebsocketOptionGroup.rpcWsAuthenticationPublicKeyFile == null,
-          asList("--rpc-ws-authentication-jwt-algorithm"));
-    }
-
-    if (jsonRPCWebsocketOptionGroup.isRpcWsAuthenticationEnabled
-        && rpcWsAuthenticationCredentialsFile() == null
-        && jsonRPCWebsocketOptionGroup.rpcWsAuthenticationPublicKeyFile == null) {
-      throw new ParameterException(
-          commandLine,
-          "Unable to authenticate JSON-RPC WebSocket endpoint without a supplied credentials file or authentication public key file");
-    }
-
-    final WebSocketConfiguration webSocketConfiguration = WebSocketConfiguration.createDefault();
-    webSocketConfiguration.setEnabled(jsonRPCWebsocketOptionGroup.isRpcWsEnabled);
-    webSocketConfiguration.setHost(
-        Strings.isNullOrEmpty(jsonRPCWebsocketOptionGroup.rpcWsHost)
-            ? p2PDiscoveryOptionGroup.autoDiscoverDefaultIP().getHostAddress()
-            : jsonRPCWebsocketOptionGroup.rpcWsHost);
-    webSocketConfiguration.setPort(listenPort);
-    webSocketConfiguration.setMaxFrameSize(jsonRPCWebsocketOptionGroup.rpcWsMaxFrameSize);
-    webSocketConfiguration.setMaxActiveConnections(jsonRPCWebsocketOptionGroup.rpcWsMaxConnections);
-    webSocketConfiguration.setRpcApis(apiGroups);
-    webSocketConfiguration.setRpcApisNoAuth(
-        jsonRPCWebsocketOptionGroup.rpcWsApiMethodsNoAuth.stream()
-            .distinct()
-            .collect(Collectors.toList()));
-    webSocketConfiguration.setAuthenticationEnabled(
-        jsonRPCWebsocketOptionGroup.isRpcWsAuthenticationEnabled);
-    webSocketConfiguration.setAuthenticationCredentialsFile(rpcWsAuthenticationCredentialsFile());
-    webSocketConfiguration.setHostsAllowlist(allowCallsFrom);
-    webSocketConfiguration.setAuthenticationPublicKeyFile(
-        jsonRPCWebsocketOptionGroup.rpcWsAuthenticationPublicKeyFile);
-    webSocketConfiguration.setAuthenticationAlgorithm(
-        jsonRPCWebsocketOptionGroup.rpcWebsocketsAuthenticationAlgorithm);
-    webSocketConfiguration.setTimeoutSec(unstableRPCOptions.getWsTimeoutSec());
-    return webSocketConfiguration;
-  }
-
-  private ApiConfiguration apiConfiguration() {
-    return ImmutableApiConfiguration.builder()
-        .gasPriceBlocks(apiGasPriceBlocks)
-        .gasPricePercentile(apiGasPricePercentile)
-        .gasPriceMin(minTransactionGasPrice.toLong())
-        .gasPriceMax(apiGasPriceMax)
-        .build();
   }
 
   /**
@@ -2725,122 +1931,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         .build();
   }
 
-  private Optional<PermissioningConfiguration> permissioningConfiguration() throws Exception {
-    if (!(localPermissionsEnabled() || contractPermissionsEnabled())) {
-      if (jsonRPCHttpOptionGroup.rpcHttpApis.contains(RpcApis.PERM.name())
-          || jsonRPCWebsocketOptionGroup.rpcWsApis.contains(RpcApis.PERM.name())) {
-        logger.warn(
-            "Permissions are disabled. Cannot enable PERM APIs when not using Permissions.");
-      }
-      return Optional.empty();
-    }
-
-    final Optional<LocalPermissioningConfiguration> localPermissioningConfigurationOptional;
-    if (localPermissionsEnabled()) {
-      final Optional<String> nodePermissioningConfigFile =
-          Optional.ofNullable(permissionsOptionGroup.nodePermissionsConfigFile);
-      final Optional<String> accountPermissioningConfigFile =
-          Optional.ofNullable(permissionsOptionGroup.accountPermissionsConfigFile);
-
-      final LocalPermissioningConfiguration localPermissioningConfiguration =
-          PermissioningConfigurationBuilder.permissioningConfiguration(
-              permissionsOptionGroup.permissionsNodesEnabled,
-              getEnodeDnsConfiguration(),
-              nodePermissioningConfigFile.orElse(getDefaultPermissioningFilePath()),
-              permissionsOptionGroup.permissionsAccountsEnabled,
-              accountPermissioningConfigFile.orElse(getDefaultPermissioningFilePath()));
-
-      localPermissioningConfigurationOptional = Optional.of(localPermissioningConfiguration);
-    } else {
-      if (permissionsOptionGroup.nodePermissionsConfigFile != null
-          && !permissionsOptionGroup.permissionsNodesEnabled) {
-        logger.warn(
-            "Node permissioning config file set {} but no permissions enabled",
-            permissionsOptionGroup.nodePermissionsConfigFile);
-      }
-
-      if (permissionsOptionGroup.accountPermissionsConfigFile != null
-          && !permissionsOptionGroup.permissionsAccountsEnabled) {
-        logger.warn(
-            "Account permissioning config file set {} but no permissions enabled",
-            permissionsOptionGroup.accountPermissionsConfigFile);
-      }
-      localPermissioningConfigurationOptional = Optional.empty();
-    }
-
-    final SmartContractPermissioningConfiguration smartContractPermissioningConfiguration =
-        SmartContractPermissioningConfiguration.createDefault();
-
-    if (Boolean.TRUE.equals(permissionsOptionGroup.permissionsNodesContractEnabled)) {
-      if (permissionsOptionGroup.permissionsNodesContractAddress == null) {
-        throw new ParameterException(
-            this.commandLine,
-            "No node permissioning contract address specified. Cannot enable smart contract based node permissioning.");
-      } else {
-        smartContractPermissioningConfiguration.setSmartContractNodeAllowlistEnabled(
-            permissionsOptionGroup.permissionsNodesContractEnabled);
-        smartContractPermissioningConfiguration.setNodeSmartContractAddress(
-            permissionsOptionGroup.permissionsNodesContractAddress);
-        smartContractPermissioningConfiguration.setNodeSmartContractInterfaceVersion(
-            permissionsOptionGroup.permissionsNodesContractVersion);
-      }
-    } else if (permissionsOptionGroup.permissionsNodesContractAddress != null) {
-      logger.warn(
-          "Node permissioning smart contract address set {} but smart contract node permissioning is disabled.",
-          permissionsOptionGroup.permissionsNodesContractAddress);
-    }
-
-    if (Boolean.TRUE.equals(permissionsOptionGroup.permissionsAccountsContractEnabled)) {
-      if (permissionsOptionGroup.permissionsAccountsContractAddress == null) {
-        throw new ParameterException(
-            this.commandLine,
-            "No account permissioning contract address specified. Cannot enable smart contract based account permissioning.");
-      } else {
-        smartContractPermissioningConfiguration.setSmartContractAccountAllowlistEnabled(
-            permissionsOptionGroup.permissionsAccountsContractEnabled);
-        smartContractPermissioningConfiguration.setAccountSmartContractAddress(
-            permissionsOptionGroup.permissionsAccountsContractAddress);
-      }
-    } else if (permissionsOptionGroup.permissionsAccountsContractAddress != null) {
-      logger.warn(
-          "Account permissioning smart contract address set {} but smart contract account permissioning is disabled.",
-          permissionsOptionGroup.permissionsAccountsContractAddress);
-    }
-
-    final PermissioningConfiguration permissioningConfiguration =
-        new PermissioningConfiguration(
-            localPermissioningConfigurationOptional,
-            Optional.of(smartContractPermissioningConfiguration),
-            quorumPermissioningConfig());
-
-    return Optional.of(permissioningConfiguration);
-  }
-
-  private Optional<GoQuorumPermissioningConfiguration> quorumPermissioningConfig() {
-    if (!isGoQuorumCompatibilityMode) {
-      return Optional.empty();
-    }
-
-    try {
-      final OptionalLong qip714BlockNumber = genesisConfigOptions.getQip714BlockNumber();
-      return Optional.of(
-          GoQuorumPermissioningConfiguration.enabled(
-              qip714BlockNumber.orElse(QIP714_DEFAULT_BLOCK)));
-    } catch (final Exception e) {
-      throw new IllegalStateException("Error reading GoQuorum permissioning options", e);
-    }
-  }
-
-  private boolean localPermissionsEnabled() {
-    return permissionsOptionGroup.permissionsAccountsEnabled
-        || permissionsOptionGroup.permissionsNodesEnabled;
-  }
-
-  private boolean contractPermissionsEnabled() {
-    return permissionsOptionGroup.permissionsNodesContractEnabled
-        || permissionsOptionGroup.permissionsAccountsContractEnabled;
-  }
-
   private PrivacyParameters privacyParameters() {
 
     CommandLineUtils.checkOptionDependencies(
@@ -2853,8 +1943,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     CommandLineUtils.checkMultiOptionDependencies(
         logger,
         commandLine,
-        "--privacy-url and/or --privacy-public-key-file ignored because none of --privacy-enabled or isQuorum (in genesis file) was defined.",
-        List.of(!privacyOptionGroup.isPrivacyEnabled, !isGoQuorumCompatibilityMode),
+        "--privacy-url and/or --privacy-public-key-file ignored because none of --privacy-enabled was defined.",
+        List.of(!privacyOptionGroup.isPrivacyEnabled),
         List.of("--privacy-url", "--privacy-public-key-file"));
 
     checkPrivacyTlsOptionsDependencies();
@@ -2865,12 +1955,15 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       if (syncMode == SyncMode.FAST) {
         throw new ParameterException(commandLine, String.format("%s %s", "Fast sync", errorSuffix));
       }
+      if (syncMode == SyncMode.SNAP) {
+        throw new ParameterException(commandLine, String.format("%s %s", "Snap sync", errorSuffix));
+      }
+      if (syncMode == SyncMode.CHECKPOINT) {
+        throw new ParameterException(
+            commandLine, String.format("%s %s", "Checkpoint sync", errorSuffix));
+      }
       if (isPruningEnabled()) {
         throw new ParameterException(commandLine, String.format("%s %s", "Pruning", errorSuffix));
-      }
-      if (isGoQuorumCompatibilityMode) {
-        throw new ParameterException(
-            commandLine, String.format("GoQuorum privacy is no longer supported in Besu"));
       }
 
       if (Boolean.TRUE.equals(privacyOptionGroup.isPrivacyMultiTenancyEnabled)
@@ -2886,8 +1979,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       privacyParametersBuilder.setMultiTenancyEnabled(
           privacyOptionGroup.isPrivacyMultiTenancyEnabled);
       privacyParametersBuilder.setFlexiblePrivacyGroupsEnabled(
-          privacyOptionGroup.isFlexiblePrivacyGroupsEnabled
-              || privacyOptionGroup.isOnchainPrivacyGroupsEnabled);
+          privacyOptionGroup.isFlexiblePrivacyGroupsEnabled);
       privacyParametersBuilder.setPrivacyPluginEnabled(
           unstablePrivacyPluginOptions.isPrivacyPluginEnabled());
 
@@ -2951,10 +2043,10 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   }
 
   private boolean anyPrivacyApiEnabled() {
-    return jsonRPCHttpOptionGroup.rpcHttpApis.contains(RpcApis.EEA.name())
-        || jsonRPCWebsocketOptionGroup.rpcWsApis.contains(RpcApis.EEA.name())
-        || jsonRPCHttpOptionGroup.rpcHttpApis.contains(RpcApis.PRIV.name())
-        || jsonRPCWebsocketOptionGroup.rpcWsApis.contains(RpcApis.PRIV.name());
+    return jsonRpcHttpOptions.getRpcHttpApis().contains(RpcApis.EEA.name())
+        || rpcWebsocketOptions.getRpcWsApis().contains(RpcApis.EEA.name())
+        || jsonRpcHttpOptions.getRpcHttpApis().contains(RpcApis.PRIV.name())
+        || rpcWebsocketOptions.getRpcWsApis().contains(RpcApis.PRIV.name());
   }
 
   private PrivacyKeyValueStorageProvider privacyKeyStorageProvider(final String name) {
@@ -3010,31 +2102,86 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     return unstableSynchronizerOptions
         .toDomainObject()
         .syncMode(syncMode)
-        .fastSyncMinimumPeerCount(fastSyncMinPeerCount)
+        .fastSyncMinimumPeerCount(syncMinPeerCount)
         .build();
   }
 
   private TransactionPoolConfiguration buildTransactionPoolConfiguration() {
-    return unstableTransactionPoolOptions
-        .toDomainObject()
-        .enableSaveRestore(txPoolOptionGroup.saveRestoreEnabled)
-        .disableLocalTransactions(txPoolOptionGroup.disableLocalTxs)
-        .txPoolLimitByAccountPercentage(txPoolOptionGroup.txPoolLimitByAccountPercentage)
-        .txPoolMaxSize(txPoolOptionGroup.txPoolMaxSize)
-        .pendingTxRetentionPeriod(txPoolOptionGroup.pendingTxRetentionPeriod)
-        .priceBump(Percentage.fromInt(txPoolOptionGroup.priceBump))
-        .txFeeCap(txFeeCap)
-        .saveFile(dataPath.resolve(txPoolOptionGroup.saveFile.getPath()).toFile())
-        .build();
+    final var txPoolConf = transactionPoolOptions.toDomainObject();
+    final var txPoolConfBuilder =
+        ImmutableTransactionPoolConfiguration.builder()
+            .from(txPoolConf)
+            .saveFile((dataPath.resolve(txPoolConf.getSaveFile().getPath()).toFile()));
+
+    if (getActualGenesisConfigOptions().isZeroBaseFee()) {
+      logger.info(
+          "Forcing price bump for transaction replacement to 0, since we are on a zero basefee network");
+      txPoolConfBuilder.priceBump(Percentage.ZERO);
+    }
+
+    if (getMiningParameters().getMinTransactionGasPrice().equals(Wei.ZERO)
+        && !transactionPoolOptions.isPriceBumpSet(commandLine)) {
+      logger.info(
+          "Forcing price bump for transaction replacement to 0, since min-gas-price is set to 0");
+      txPoolConfBuilder.priceBump(Percentage.ZERO);
+    }
+
+    if (getMiningParameters().getMinTransactionGasPrice().lessThan(txPoolConf.getMinGasPrice())) {
+      if (transactionPoolOptions.isMinGasPriceSet(commandLine)) {
+        throw new ParameterException(
+            commandLine, "tx-pool-min-gas-price cannot be greater than the value of min-gas-price");
+
+      } else {
+        // for backward compatibility, if tx-pool-min-gas-price is not set, we adjust its value
+        // to be the same as min-gas-price, so the behavior is as before this change, and we notify
+        // the user of the change
+        logger.warn(
+            "Forcing tx-pool-min-gas-price="
+                + getMiningParameters().getMinTransactionGasPrice().toDecimalString()
+                + ", since it cannot be greater than the value of min-gas-price");
+        txPoolConfBuilder.minGasPrice(getMiningParameters().getMinTransactionGasPrice());
+      }
+    }
+
+    return txPoolConfBuilder.build();
   }
 
-  /**
-   * Return the file where to save txpool content if the relative option is enabled.
-   *
-   * @return the save file
-   */
-  public File getSaveFile() {
-    return txPoolOptionGroup.saveFile;
+  private MiningParameters getMiningParameters() {
+    if (miningParameters == null) {
+      miningOptions.setGenesisBlockPeriodSeconds(
+          getGenesisBlockPeriodSeconds(getActualGenesisConfigOptions()));
+      miningParameters = miningOptions.toDomainObject();
+      initMiningParametersMetrics(miningParameters);
+    }
+    return miningParameters;
+  }
+
+  private DataStorageConfiguration getDataStorageConfiguration() {
+    if (dataStorageConfiguration == null) {
+      dataStorageConfiguration = dataStorageOptions.toDomainObject();
+    }
+    return dataStorageConfiguration;
+  }
+
+  private void initMiningParametersMetrics(final MiningParameters miningParameters) {
+    new MiningParametersMetrics(getMetricsSystem(), miningParameters);
+  }
+
+  private OptionalInt getGenesisBlockPeriodSeconds(
+      final GenesisConfigOptions genesisConfigOptions) {
+    if (genesisConfigOptions.isClique()) {
+      return OptionalInt.of(genesisConfigOptions.getCliqueConfigOptions().getBlockPeriodSeconds());
+    }
+
+    if (genesisConfigOptions.isIbft2()) {
+      return OptionalInt.of(genesisConfigOptions.getBftConfigOptions().getBlockPeriodSeconds());
+    }
+
+    if (genesisConfigOptions.isQbft()) {
+      return OptionalInt.of(genesisConfigOptions.getQbftConfigOptions().getBlockPeriodSeconds());
+    }
+
+    return OptionalInt.empty();
   }
 
   private boolean isPruningEnabled() {
@@ -3102,7 +2249,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
             .ethstatsOptions(ethstatsOptions)
             .storageProvider(keyValueStorageProvider(keyValueStorageName))
             .rpcEndpointService(rpcEndpointServiceImpl)
-            .rpcMaxLogsRange(rpcMaxLogsRange)
+            .enodeDnsConfiguration(getEnodeDnsConfiguration())
             .build();
 
     addShutdownHook(runner);
@@ -3273,30 +2420,6 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         .orElseGet(() -> KeyPairUtil.getDefaultKeyFile(dataDir()));
   }
 
-  private String rpcHttpAuthenticationCredentialsFile() {
-    final String filename = jsonRPCHttpOptionGroup.rpcHttpAuthenticationCredentialsFile;
-
-    if (filename != null) {
-      RpcAuthFileValidator.validate(commandLine, filename, "HTTP");
-    }
-    return filename;
-  }
-
-  private String rpcWsAuthenticationCredentialsFile() {
-    final String filename = jsonRPCWebsocketOptionGroup.rpcWsAuthenticationCredentialsFile;
-
-    if (filename != null) {
-      RpcAuthFileValidator.validate(commandLine, filename, "WS");
-    }
-    return filename;
-  }
-
-  private String getDefaultPermissioningFilePath() {
-    return dataDir()
-        + System.getProperty("file.separator")
-        + DefaultCommandValues.PERMISSIONING_CONFIG_LOCATION;
-  }
-
   /**
    * Metrics System used by Besu
    *
@@ -3319,7 +2442,11 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       staticNodesPath = dataDir().resolve(staticNodesFilename);
     }
     logger.debug("Static Nodes file: {}", staticNodesPath);
-    return StaticNodesParser.fromPath(staticNodesPath, getEnodeDnsConfiguration());
+    final Set<EnodeURL> staticNodes =
+        StaticNodesParser.fromPath(staticNodesPath, getEnodeDnsConfiguration());
+    logger.info("Connecting to {} static nodes.", staticNodes.size());
+    logger.debug("Static Nodes = {}", staticNodes);
+    return staticNodes;
   }
 
   private List<EnodeURL> buildEnodes(
@@ -3331,7 +2458,7 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
   }
 
   /**
-   * Besu CLI Paramaters exception handler used by VertX. Visible for testing.
+   * Besu CLI Parameters exception handler used by VertX. Visible for testing.
    *
    * @return instance of BesuParameterExceptionHandler
    */
@@ -3390,11 +2517,12 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         .forEach(
             port -> {
               if (port.equals(p2PDiscoveryOptionGroup.p2pPort)
-                  && !NetworkUtility.isPortAvailable(port)) {
+                  && (NetworkUtility.isPortUnavailableForTcp(port)
+                      || NetworkUtility.isPortUnavailableForUdp(port))) {
                 unavailablePorts.add(port);
               }
               if (!port.equals(p2PDiscoveryOptionGroup.p2pPort)
-                  && !NetworkUtility.isPortAvailableForTcp(port)) {
+                  && NetworkUtility.isPortUnavailableForTcp(port)) {
                 unavailablePorts.add(port);
               }
             });
@@ -3416,22 +2544,18 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     addPortIfEnabled(
         effectivePorts, p2PDiscoveryOptionGroup.p2pPort, p2PDiscoveryOptionGroup.p2pEnabled);
     addPortIfEnabled(
-        effectivePorts,
-        graphQlOptionGroup.graphQLHttpPort,
-        graphQlOptionGroup.isGraphQLHttpEnabled);
+        effectivePorts, graphQlOptions.getGraphQLHttpPort(), graphQlOptions.isGraphQLHttpEnabled());
     addPortIfEnabled(
-        effectivePorts,
-        jsonRPCHttpOptionGroup.rpcHttpPort,
-        jsonRPCHttpOptionGroup.isRpcHttpEnabled);
+        effectivePorts, jsonRpcHttpOptions.getRpcHttpPort(), jsonRpcHttpOptions.isRpcHttpEnabled());
     addPortIfEnabled(
-        effectivePorts,
-        jsonRPCWebsocketOptionGroup.rpcWsPort,
-        jsonRPCWebsocketOptionGroup.isRpcWsEnabled);
+        effectivePorts, rpcWebsocketOptions.getRpcWsPort(), rpcWebsocketOptions.isRpcWsEnabled());
     addPortIfEnabled(effectivePorts, engineRPCOptionGroup.engineRpcPort, isEngineApiEnabled());
     addPortIfEnabled(
         effectivePorts, metricsOptionGroup.metricsPort, metricsOptionGroup.isMetricsEnabled);
     addPortIfEnabled(
-        effectivePorts, minerOptionGroup.stratumPort, minerOptionGroup.iStratumMiningEnabled);
+        effectivePorts,
+        getMiningParameters().getStratumPort(),
+        getMiningParameters().isStratumMiningEnabled());
     return effectivePorts;
   }
 
@@ -3449,55 +2573,19 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     }
   }
 
-  private void checkGoQuorumCompatibilityConfig(final EthNetworkConfig ethNetworkConfig) {
-    if (isGoQuorumCompatibilityMode) {
-
-      logger.warn(
-          DEPRECATION_WARNING_MSG,
-          "isQuorum mode in genesis file (GoQuorum-compatible privacy mode)",
-          "--privacy-enabled");
-      if (!minTransactionGasPrice.isZero()) {
-        throw new ParameterException(
-            this.commandLine,
-            "--min-gas-price must be set to zero if isQuorum mode is enabled in the genesis file.");
-      }
-
-      if (ensureGoQuorumCompatibilityModeNotUsedOnMainnet(genesisConfigOptions, ethNetworkConfig)) {
-        throw new ParameterException(this.commandLine, "isQuorum mode cannot be used on Mainnet.");
-      }
-    }
-  }
-
-  private static boolean ensureGoQuorumCompatibilityModeNotUsedOnMainnet(
-      final GenesisConfigOptions genesisConfigOptions, final EthNetworkConfig ethNetworkConfig) {
-    return ethNetworkConfig.getNetworkId().equals(MAINNET.getNetworkId())
-        || genesisConfigOptions
-            .getChainId()
-            .map(chainId -> chainId.equals(MAINNET.getNetworkId()))
-            .orElse(false);
-  }
-
   @VisibleForTesting
   String getLogLevel() {
     return loggingLevelOption.getLogLevel();
   }
 
-  private class BesuCommandConfigurationService implements BesuConfiguration {
-
-    @Override
-    public Path getStoragePath() {
-      return dataDir().resolve(DATABASE_PATH);
-    }
-
-    @Override
-    public Path getDataPath() {
-      return dataDir();
-    }
-
-    @Override
-    public int getDatabaseVersion() {
-      return dataStorageOptions.toDomainObject().getDataStorageFormat().getDatabaseVersion();
-    }
+  /**
+   * Returns the flag indicating that version compatiblity checks will be made.
+   *
+   * @return true if compatibility checks should be made, otherwise false
+   */
+  @VisibleForTesting
+  public Boolean getVersionCompatibilityProtection() {
+    return versionCompatibilityProtection;
   }
 
   private void instantiateSignatureAlgorithmFactory() {
@@ -3530,14 +2618,12 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     return genesisConfigOptions.getEcCurve();
   }
 
-  /** Enables Go Quorum Compatibility mode. Visible for testing. */
-  @VisibleForTesting
-  protected void enableGoQuorumCompatibilityMode() {
-    // this static flag is still used for GoQuorum permissioning compatibility
-    isGoQuorumCompatibilityMode = true;
-  }
-
-  private GenesisConfigOptions getActualGenesisConfigOptions() {
+  /**
+   * Return the genesis config options after applying any specified config overrides
+   *
+   * @return the genesis config options after applying any specified config overrides
+   */
+  protected GenesisConfigOptions getActualGenesisConfigOptions() {
     return Optional.ofNullable(genesisConfigOptions)
         .orElseGet(
             () ->
@@ -3551,7 +2637,8 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
         getActualGenesisConfigOptions().getTerminalTotalDifficulty().isPresent());
   }
 
-  private void setIgnorableStorageSegments() {
+  /** Set ignorable segments in RocksDB Storage Provider plugin. */
+  public void setIgnorableStorageSegments() {
     if (!unstableChainPruningOptions.getChainDataPruningEnabled()) {
       rocksDBPlugin.addIgnorableSegmentIdentifier(KeyValueSegmentIdentifier.CHAIN_PRUNER_STATE);
     }
@@ -3599,36 +2686,20 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     return engineRPCOptionGroup.overrideEngineRpcEnabled || isMergeEnabled();
   }
 
-  private static List<String> getJDKEnabledCipherSuites() {
-    try {
-      final SSLContext context = SSLContext.getInstance("TLS");
-      context.init(null, null, null);
-      final SSLEngine engine = context.createSSLEngine();
-      return Arrays.asList(engine.getEnabledCipherSuites());
-    } catch (final KeyManagementException | NoSuchAlgorithmException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  private static List<String> getJDKEnabledProtocols() {
-    try {
-      final SSLContext context = SSLContext.getInstance("TLS");
-      context.init(null, null, null);
-      final SSLEngine engine = context.createSSLEngine();
-      return Arrays.asList(engine.getEnabledProtocols());
-    } catch (final KeyManagementException | NoSuchAlgorithmException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   private SyncMode getDefaultSyncModeIfNotSet() {
     return Optional.ofNullable(syncMode)
         .orElse(
             genesisFile == null
                     && !privacyOptionGroup.isPrivacyEnabled
-                    && Optional.ofNullable(network).map(NetworkName::canFastSync).orElse(false)
-                ? SyncMode.FAST
+                    && Optional.ofNullable(network).map(NetworkName::canSnapSync).orElse(false)
+                ? SyncMode.SNAP
                 : SyncMode.FULL);
+  }
+
+  private Boolean getDefaultVersionCompatibilityProtectionIfNotSet() {
+    // Version compatibility protection is enabled by default for non-named networks
+    return Optional.ofNullable(versionCompatibilityProtection)
+        .orElse(commandLine.getParseResult().hasMatchedOption("network") ? false : true);
   }
 
   private String generateConfigurationOverview() {
@@ -3642,7 +2713,14 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
       builder.setNetwork(network.normalize());
     }
 
+    if (profile != null) {
+      builder.setProfile(profile.toString());
+    }
+
     builder.setHasCustomGenesis(genesisFile != null);
+    if (genesisFile != null) {
+      builder.setCustomGenesis(genesisFile.getAbsolutePath());
+    }
     builder.setNetworkId(ethNetworkConfig.getNetworkId());
 
     builder
@@ -3673,6 +2751,18 @@ public class BesuCommand implements DefaultCommandValues, Runnable {
     if (rocksDBPlugin.isHighSpecEnabled()) {
       builder.setHighSpecEnabled();
     }
+
+    if (getDataStorageConfiguration().getUnstable().getBonsaiLimitTrieLogsEnabled()) {
+      builder.setLimitTrieLogsEnabled();
+      builder.setTrieLogRetentionLimit(getDataStorageConfiguration().getBonsaiMaxLayersToLoad());
+      builder.setTrieLogsPruningWindowSize(
+          getDataStorageConfiguration().getUnstable().getBonsaiTrieLogPruningWindowSize());
+    }
+
+    builder.setTxPoolImplementation(buildTransactionPoolConfiguration().getTxPoolImplementation());
+    builder.setWorldStateUpdateMode(unstableEvmOptions.toDomainObject().worldUpdaterMode());
+
+    builder.setPluginContext(besuComponent.getBesuPluginContext());
 
     return builder.build();
   }

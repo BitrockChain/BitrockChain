@@ -20,6 +20,7 @@ import org.hyperledger.besu.consensus.common.EpochManager;
 import org.hyperledger.besu.cryptoservices.NodeKey;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.mainnet.BlockHeaderValidator;
@@ -50,6 +51,7 @@ public class CliqueProtocolSchedule {
    * @param privacyParameters the privacy parameters
    * @param isRevertReasonEnabled the is revert reason enabled
    * @param evmConfiguration the evm configuration
+   * @param badBlockManager the cache to use to keep invalid blocks
    * @return the protocol schedule
    */
   public static ProtocolSchedule create(
@@ -57,7 +59,8 @@ public class CliqueProtocolSchedule {
       final NodeKey nodeKey,
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
-      final EvmConfiguration evmConfiguration) {
+      final EvmConfiguration evmConfiguration,
+      final BadBlockManager badBlockManager) {
 
     final CliqueConfigOptions cliqueConfig = config.getCliqueConfigOptions();
 
@@ -78,11 +81,13 @@ public class CliqueProtocolSchedule {
                     applyCliqueSpecificModifications(
                         epochManager,
                         cliqueConfig.getBlockPeriodSeconds(),
+                        cliqueConfig.getCreateEmptyBlocks(),
                         localNodeAddress,
                         builder)),
             privacyParameters,
             isRevertReasonEnabled,
-            evmConfiguration)
+            evmConfiguration,
+            badBlockManager)
         .createProtocolSchedule();
   }
 
@@ -93,30 +98,40 @@ public class CliqueProtocolSchedule {
    * @param nodeKey the node key
    * @param isRevertReasonEnabled the is revert reason enabled
    * @param evmConfiguration the evm configuration
+   * @param badBlockManager the cache to use to keep invalid blocks
    * @return the protocol schedule
    */
   public static ProtocolSchedule create(
       final GenesisConfigOptions config,
       final NodeKey nodeKey,
       final boolean isRevertReasonEnabled,
-      final EvmConfiguration evmConfiguration) {
+      final EvmConfiguration evmConfiguration,
+      final BadBlockManager badBlockManager) {
     return create(
-        config, nodeKey, PrivacyParameters.DEFAULT, isRevertReasonEnabled, evmConfiguration);
+        config,
+        nodeKey,
+        PrivacyParameters.DEFAULT,
+        isRevertReasonEnabled,
+        evmConfiguration,
+        badBlockManager);
   }
 
   private static ProtocolSpecBuilder applyCliqueSpecificModifications(
       final EpochManager epochManager,
       final long secondsBetweenBlocks,
+      final boolean createEmptyBlocks,
       final Address localNodeAddress,
       final ProtocolSpecBuilder specBuilder) {
 
     return specBuilder
         .blockHeaderValidatorBuilder(
             baseFeeMarket ->
-                getBlockHeaderValidator(epochManager, secondsBetweenBlocks, baseFeeMarket))
+                getBlockHeaderValidator(
+                    epochManager, secondsBetweenBlocks, createEmptyBlocks, baseFeeMarket))
         .ommerHeaderValidatorBuilder(
             baseFeeMarket ->
-                getBlockHeaderValidator(epochManager, secondsBetweenBlocks, baseFeeMarket))
+                getBlockHeaderValidator(
+                    epochManager, secondsBetweenBlocks, createEmptyBlocks, baseFeeMarket))
         .blockBodyValidatorBuilder(MainnetBlockBodyValidator::new)
         .blockValidatorBuilder(MainnetProtocolSpecs.blockValidatorBuilder())
         .blockImporterBuilder(MainnetBlockImporter::new)
@@ -128,11 +143,14 @@ public class CliqueProtocolSchedule {
   }
 
   private static BlockHeaderValidator.Builder getBlockHeaderValidator(
-      final EpochManager epochManager, final long secondsBetweenBlocks, final FeeMarket feeMarket) {
+      final EpochManager epochManager,
+      final long secondsBetweenBlocks,
+      final boolean createEmptyBlocks,
+      final FeeMarket feeMarket) {
     Optional<BaseFeeMarket> baseFeeMarket =
         Optional.of(feeMarket).filter(FeeMarket::implementsBaseFee).map(BaseFeeMarket.class::cast);
 
     return BlockHeaderValidationRulesetFactory.cliqueBlockHeaderValidator(
-        secondsBetweenBlocks, epochManager, baseFeeMarket);
+        secondsBetweenBlocks, createEmptyBlocks, epochManager, baseFeeMarket);
   }
 }

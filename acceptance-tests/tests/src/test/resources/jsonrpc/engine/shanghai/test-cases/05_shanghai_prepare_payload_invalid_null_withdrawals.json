@@ -4,8 +4,8 @@
     "method": "engine_forkchoiceUpdatedV2",
     "params": [
       {
-        "headBlockHash": "0x9392d866ef80eb0d7a1700362326e3396cc9550b757bda2191548fb1447f5d26",
-        "safeBlockHash": "0x9392d866ef80eb0d7a1700362326e3396cc9550b757bda2191548fb1447f5d26",
+        "headBlockHash": "0xf4a1d287dd3bb7e877c57476912e6a6052bc4eed8ea70d032b55d77f26ee985f",
+        "safeBlockHash": "0xf4a1d287dd3bb7e877c57476912e6a6052bc4eed8ea70d032b55d77f26ee985f",
         "finalizedBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
       },
       {
@@ -20,8 +20,8 @@
     "jsonrpc" : "2.0",
     "id" : 67,
     "error" : {
-      "code" : -32602,
-      "message" : "Invalid params"
+      "code" : -38003,
+      "message" : "Invalid payload attributes"
     }
   },
   "statusCode" : 200

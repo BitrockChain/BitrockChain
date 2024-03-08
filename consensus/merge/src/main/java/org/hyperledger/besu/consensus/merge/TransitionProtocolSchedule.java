@@ -16,10 +16,11 @@ package org.hyperledger.besu.consensus.merge;
 
 import org.hyperledger.besu.config.GenesisConfigOptions;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Difficulty;
+import org.hyperledger.besu.ethereum.core.PermissionTransactionFilter;
 import org.hyperledger.besu.ethereum.core.ProcessableBlockHeader;
-import org.hyperledger.besu.ethereum.core.TransactionFilter;
 import org.hyperledger.besu.ethereum.mainnet.MainnetProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
@@ -61,14 +62,15 @@ public class TransitionProtocolSchedule implements ProtocolSchedule {
    *
    * @param genesisConfigOptions {@link GenesisConfigOptions} containing the config options for the
    *     milestone starting points
+   * @param badBlockManager the cache to use to keep invalid blocks
    * @return an initialised TransitionProtocolSchedule using post-merge defaults
    */
   public static TransitionProtocolSchedule fromConfig(
-      final GenesisConfigOptions genesisConfigOptions) {
+      final GenesisConfigOptions genesisConfigOptions, final BadBlockManager badBlockManager) {
     ProtocolSchedule preMergeProtocolSchedule =
-        MainnetProtocolSchedule.fromConfig(genesisConfigOptions);
+        MainnetProtocolSchedule.fromConfig(genesisConfigOptions, badBlockManager);
     ProtocolSchedule postMergeProtocolSchedule =
-        MergeProtocolSchedule.create(genesisConfigOptions, false);
+        MergeProtocolSchedule.create(genesisConfigOptions, false, badBlockManager);
     return new TransitionProtocolSchedule(
         preMergeProtocolSchedule, postMergeProtocolSchedule, PostMergeContext.get());
   }
@@ -203,6 +205,13 @@ public class TransitionProtocolSchedule implements ProtocolSchedule {
         "Should not use TransitionProtocolSchedule wrapper class to create milestones");
   }
 
+  @Override
+  public Optional<ScheduledProtocolSpec.Hardfork> hardforkFor(
+      final Predicate<ScheduledProtocolSpec> predicate) {
+    return this.transitionUtils.dispatchFunctionAccordingToMergeState(
+        schedule -> schedule.hardforkFor(predicate));
+  }
+
   /**
    * List milestones.
    *
@@ -216,12 +225,14 @@ public class TransitionProtocolSchedule implements ProtocolSchedule {
   /**
    * Sets transaction filter.
    *
-   * @param transactionFilter the transaction filter
+   * @param permissionTransactionFilter the transaction filter
    */
   @Override
-  public void setTransactionFilter(final TransactionFilter transactionFilter) {
+  public void setPermissionTransactionFilter(
+      final PermissionTransactionFilter permissionTransactionFilter) {
     transitionUtils.dispatchConsumerAccordingToMergeState(
-        protocolSchedule -> protocolSchedule.setTransactionFilter(transactionFilter));
+        protocolSchedule ->
+            protocolSchedule.setPermissionTransactionFilter(permissionTransactionFilter));
   }
 
   /**

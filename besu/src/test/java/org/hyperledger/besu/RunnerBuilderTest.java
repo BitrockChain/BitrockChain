@@ -36,6 +36,7 @@ import org.hyperledger.besu.cryptoservices.KeyPairSecurityModule;
 import org.hyperledger.besu.cryptoservices.NodeKey;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.api.ImmutableApiConfiguration;
 import org.hyperledger.besu.ethereum.api.graphql.GraphQLConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.ipc.JsonRpcIpcConfiguration;
@@ -128,7 +129,8 @@ public final class RunnerBuilderTest {
     when(besuController.getNodeKey()).thenReturn(nodeKey);
     when(besuController.getMiningParameters()).thenReturn(mock(MiningParameters.class));
     when(besuController.getPrivacyParameters()).thenReturn(mock(PrivacyParameters.class));
-    when(besuController.getTransactionPool()).thenReturn(mock(TransactionPool.class));
+    when(besuController.getTransactionPool())
+        .thenReturn(mock(TransactionPool.class, RETURNS_DEEP_STUBS));
     when(besuController.getSynchronizer()).thenReturn(mock(Synchronizer.class));
     when(besuController.getMiningCoordinator()).thenReturn(mock(MiningCoordinator.class));
     when(besuController.getMiningCoordinator()).thenReturn(mock(MergeMiningCoordinator.class));
@@ -166,6 +168,7 @@ public final class RunnerBuilderTest {
             .dataDir(dataDir.getRoot())
             .storageProvider(mock(KeyValueStorageProvider.class, RETURNS_DEEP_STUBS))
             .rpcEndpointService(new RpcEndpointServiceImpl())
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
     runner.startEthereumMainLoop();
 
@@ -210,6 +213,7 @@ public final class RunnerBuilderTest {
             .dataDir(dataDir.getRoot())
             .storageProvider(storageProvider)
             .rpcEndpointService(new RpcEndpointServiceImpl())
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
     runner.startEthereumMainLoop();
 
@@ -269,6 +273,7 @@ public final class RunnerBuilderTest {
             .storageProvider(mock(KeyValueStorageProvider.class, RETURNS_DEEP_STUBS))
             .rpcEndpointService(new RpcEndpointServiceImpl())
             .besuPluginContext(mock(BesuPluginContextImpl.class))
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
 
     assertThat(runner.getJsonRpcPort()).isPresent();
@@ -311,6 +316,7 @@ public final class RunnerBuilderTest {
             .storageProvider(mock(KeyValueStorageProvider.class, RETURNS_DEEP_STUBS))
             .rpcEndpointService(new RpcEndpointServiceImpl())
             .besuPluginContext(mock(BesuPluginContextImpl.class))
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
 
     assertThat(runner.getEngineJsonRpcPort()).isPresent();
@@ -352,6 +358,7 @@ public final class RunnerBuilderTest {
             .storageProvider(mock(KeyValueStorageProvider.class, RETURNS_DEEP_STUBS))
             .rpcEndpointService(new RpcEndpointServiceImpl())
             .besuPluginContext(mock(BesuPluginContextImpl.class))
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
 
     assertThat(runner.getEngineJsonRpcPort()).isPresent();
@@ -395,6 +402,7 @@ public final class RunnerBuilderTest {
             .rpcEndpointService(new RpcEndpointServiceImpl())
             .besuPluginContext(mock(BesuPluginContextImpl.class))
             .networkingConfiguration(NetworkingConfiguration.create())
+            .apiConfiguration(ImmutableApiConfiguration.builder().build())
             .build();
 
     assertThat(runner.getJsonRpcPort()).isPresent();
