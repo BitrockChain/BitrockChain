@@ -1,11 +1,9 @@
 
-# Bitrock Chain | Besu 24.3.0
+# About Bitrock
 
-Bitrock is an Ethereum IBFT 2.0 Proof of Authority (PoA) side chain with near-zero native gas fees and lightning speed block times. On top of having a cost-effective, scalable, and high speed infrastructure, Bitrock will have a unique multichain (DEX) swap where cryptocurrencies can be traded directly on their native chains without the need to use DEX's native to those chains, hold native chain tokens, or pay gas fees in those native tokens. All of the former can be handled through Bitrock's native multichain DEX, and all gas is equalized from other chains and paid in native Bitrock.
+Stealth launched in July of 2023 as a PoA Ethereum side chain with a fully circulating supply, Bitrock boasts an ultra-low cost trading experience coupled with a 1 second block time. Offering the attractive combination of high accessibility, a vibrant ecosystem (including a stable coin & token builder), a robust & secure infrastructure, and numerous key integrations & listings, Bitrock has little to no barriers to entry - positioning it as a favored choice for hosting any type of project or launch.
 
-
-
-
+Bitrock's native official DEX, Rockswap, will soon support transactions across 10+ chains, with cross-chain integration in its final stages. Upon completion, cryptocurrencies may be traded between other native chains and the Bitrock chain without the need to use DEXs native to those chains, hold native chain tokens, or pay gas fees in those native tokens. All gas would be equalized and paid in native Bitrock.
 
 
 ![Bitrock](https://i.ibb.co/G338pWq/frame-png-2-1.png)
