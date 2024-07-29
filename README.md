@@ -9,6 +9,6 @@ Bitrock's native official DEX, Rockswap, will soon support transactions across 1
 
 [Documentation](https://docs.bit-rock.io)
 [Website](https://bit-rock.io)
-[X](https://twitter.com/bitrockchain)
+[X (Twitter)](https://twitter.com/bitrockchain)
 
 
