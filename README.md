@@ -20,19 +20,19 @@ Bitrock's native official DEX, Rockswap, will soon support transactions across 1
 
 Mainnet
 ```bash
-  RPC URL 	    https://brockrpc.io
-  Chain ID	    7171
-  Bridge	    Bitrock Bridge
-  Explorer	    https://explorer.bit-rock.io
+RPC URL 	https://brockrpc.io
+Chain ID    7171
+Bridge	    Bitrock Bridge
+Explorer    https://explorer.bit-rock.io
 ```
 
 Testnet
 ```bash
-    RPC URL	    https://testnet.bit-rock.io
-    Chain ID	7771
-    Symbol	    BROCK
-    Explorer	https://testnetscan.bit-rock.io
+RPC URL	    https://testnet.bit-rock.io
+Chain ID	7771
+Symbol	    BROCK
+Explorer	https://testnetscan.bit-rock.io
 ```
 
 - [Chainlist](https://chainlist.org/chain/7171)
-
+- [Genesis](https://github.com/BitrockChain/genesis)
