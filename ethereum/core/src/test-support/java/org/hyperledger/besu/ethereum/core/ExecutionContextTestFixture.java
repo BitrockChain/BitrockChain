@@ -36,7 +36,6 @@ import org.hyperledger.besu.plugin.services.storage.KeyValueStorage;
 import org.hyperledger.besu.services.kvstore.InMemoryKeyValueStorage;
 
 import java.math.BigInteger;
-import java.util.Optional;
 import java.util.function.Function;
 
 public class ExecutionContextTestFixture {
@@ -65,14 +64,14 @@ public class ExecutionContextTestFixture {
             new KeyValueStoragePrefixedKeyBlockchainStorage(
                 blockchainKeyValueStorage,
                 new VariablesKeyValueStorage(variablesKeyValueStorage),
-                new MainnetBlockHeaderFunctions()),
+                new MainnetBlockHeaderFunctions(),
+                false),
             new NoOpMetricsSystem(),
             0);
     this.stateArchive = createInMemoryWorldStateArchive();
     this.protocolSchedule = protocolSchedule;
     this.protocolContext =
-        new ProtocolContext(
-            blockchain, stateArchive, null, Optional.empty(), new BadBlockManager());
+        new ProtocolContext(blockchain, stateArchive, null, new BadBlockManager());
     genesisState.writeStateTo(stateArchive.getMutable());
   }
 
@@ -142,6 +141,7 @@ public class ExecutionContextTestFixture {
                     new PrivacyParameters(),
                     false,
                     EvmConfiguration.DEFAULT,
+                    MiningParameters.MINING_DISABLED,
                     new BadBlockManager())
                 .createProtocolSchedule();
       }

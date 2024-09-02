@@ -11,7 +11,6 @@
  * specific language governing permissions and limitations under the License.
  *
  * SPDX-License-Identifier: Apache-2.0
- *
  */
 package org.hyperledger.besu.evmtool;
 
@@ -26,6 +25,7 @@ import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderBuilder;
 import org.hyperledger.besu.ethereum.core.Difficulty;
+import org.hyperledger.besu.ethereum.core.MutableWorldState;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockHeaderFunctions;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
@@ -33,13 +33,11 @@ import org.hyperledger.besu.ethereum.vm.CachingBlockHashLookup;
 import org.hyperledger.besu.evm.Code;
 import org.hyperledger.besu.evm.EVM;
 import org.hyperledger.besu.evm.EvmSpecVersion;
-import org.hyperledger.besu.evm.account.AccountStorageEntry;
 import org.hyperledger.besu.evm.code.CodeInvalid;
 import org.hyperledger.besu.evm.frame.MessageFrame;
 import org.hyperledger.besu.evm.log.LogsBloomFilter;
 import org.hyperledger.besu.evm.tracing.OperationTracer;
 import org.hyperledger.besu.evm.tracing.StandardJsonTracer;
-import org.hyperledger.besu.evm.worldstate.WorldState;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 import org.hyperledger.besu.metrics.MetricsSystemModule;
 import org.hyperledger.besu.util.LogConfigurator;
@@ -58,7 +56,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.NavigableMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -72,6 +70,21 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+/**
+ * This class, EvmToolCommand, serves as the main command for the EVM (Ethereum Virtual Machine)
+ * tool. The EVM tool is used to execute Ethereum transactions and contracts in a local environment.
+ *
+ * <p>EvmToolCommand implements the Runnable interface, making it the entrypoint for PicoCLI to
+ * execute this command.
+ *
+ * <p>The class provides various options for setting up and executing EVM transactions. These
+ * options include, but are not limited to, setting the gas price, sender address, receiver address,
+ * and the data to be sent with the transaction.
+ *
+ * <p>Key methods in this class include 'run()' for executing the command, 'execute()' for setting
+ * up and running the EVM transaction, and 'dumpWorldState()' for outputting the current state of
+ * the Ethereum world state.
+ */
 @Command(
     description = "This command evaluates EVM transactions.",
     abbreviateSynopsis = true,
@@ -89,6 +102,8 @@ import picocli.CommandLine.Option;
       BenchmarkSubCommand.class,
       B11rSubCommand.class,
       CodeValidateSubCommand.class,
+      EOFTestSubCommand.class,
+      PrettyPrintSubCommand.class,
       StateTestSubCommand.class,
       T8nSubCommand.class,
       T8nServerSubCommand.class
@@ -141,6 +156,11 @@ public class EvmToolCommand implements Runnable {
       paramLabel = "<address>",
       description = "Receiving address for this invocation.")
   private final Address receiver = Address.ZERO;
+
+  @Option(
+      names = {"--create"},
+      description = "Run call should be a create instead of a call operation.")
+  private final Boolean createTransaction = false;
 
   @Option(
       names = {"--contract"},
@@ -242,12 +262,22 @@ public class EvmToolCommand implements Runnable {
   PrintWriter out;
   InputStream in;
 
+  /**
+   * Default constructor for the EvmToolCommand class. It initializes the input stream with an empty
+   * byte array and the output stream with the standard output.
+   */
   public EvmToolCommand() {
     this(
         new ByteArrayInputStream(new byte[0]),
         new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out, UTF_8)), true));
   }
 
+  /**
+   * Constructor for the EvmToolCommand class with custom input and output streams.
+   *
+   * @param in The input stream to be used.
+   * @param out The output stream to be used.
+   */
   public EvmToolCommand(final InputStream in, final PrintWriter out) {
     this.in = in;
     this.out = out;
@@ -317,6 +347,25 @@ public class EvmToolCommand implements Runnable {
     subCommandLine.setHelpSectionKeys(keys);
   }
 
+  /**
+   * Returns the fork name provided by the Dagger options. If no fork is provided, it returns the
+   * name of the default EVM specification version.
+   *
+   * @return The fork name.
+   */
+  public String getFork() {
+    return daggerOptions.provideFork().orElse(EvmSpecVersion.defaultVersion().getName());
+  }
+
+  /**
+   * Checks if a fork is provided in the Dagger options.
+   *
+   * @return True if a fork is provided, false otherwise.
+   */
+  public boolean hasFork() {
+    return daggerOptions.provideFork().isPresent();
+  }
+
   @Override
   public void run() {
     LogConfigurator.setLevel("", "OFF");
@@ -335,14 +384,13 @@ public class EvmToolCommand implements Runnable {
               .build();
 
       int remainingIters = this.repeat;
-      final ProtocolSpec protocolSpec =
-          component.getProtocolSpec().apply(BlockHeaderBuilder.createDefault().buildBlockHeader());
+      final ProtocolSpec protocolSpec = component.getProtocolSpec();
       final Transaction tx =
           new Transaction.Builder()
               .nonce(0)
               .gasPrice(Wei.ZERO)
               .gasLimit(Long.MAX_VALUE)
-              .to(receiver)
+              .to(createTransaction ? null : receiver)
               .value(Wei.ZERO)
               .payload(callData)
               .sender(sender)
@@ -363,10 +411,10 @@ public class EvmToolCommand implements Runnable {
       }
 
       final EVM evm = protocolSpec.getEvm();
-      if (codeBytes.isEmpty()) {
+      if (codeBytes.isEmpty() && !createTransaction) {
         codeBytes = component.getWorldState().get(receiver).getCode();
       }
-      Code code = evm.getCode(Hash.hash(codeBytes), codeBytes);
+      Code code = evm.getCodeForCreation(codeBytes);
       if (!code.isValid()) {
         out.println(((CodeInvalid) code).getInvalidReason());
         return;
@@ -383,7 +431,9 @@ public class EvmToolCommand implements Runnable {
 
         WorldUpdater updater = component.getWorldUpdater();
         updater.getOrCreate(sender);
-        updater.getOrCreate(receiver);
+        if (!createTransaction) {
+          updater.getOrCreate(receiver);
+        }
         var contractAccount = updater.getOrCreate(contract);
         contractAccount.setCode(codeBytes);
 
@@ -414,18 +464,23 @@ public class EvmToolCommand implements Runnable {
                 .baseFee(component.getBlockchain().getChainHeadHeader().getBaseFee().orElse(null))
                 .buildBlockHeader();
 
+        Address contractAddress =
+            createTransaction ? Address.contractAddress(receiver, 0) : receiver;
         MessageFrame initialMessageFrame =
             MessageFrame.builder()
-                .type(MessageFrame.Type.MESSAGE_CALL)
+                .type(
+                    createTransaction
+                        ? MessageFrame.Type.CONTRACT_CREATION
+                        : MessageFrame.Type.MESSAGE_CALL)
                 .worldUpdater(updater.updater())
                 .initialGas(txGas)
-                .contract(Address.ZERO)
-                .address(receiver)
+                .contract(contractAddress)
+                .address(contractAddress)
                 .originator(sender)
                 .sender(sender)
                 .gasPrice(gasPriceGWei)
                 .blobGasPrice(blobGasPrice)
-                .inputData(callData)
+                .inputData(createTransaction ? codeBytes.slice(code.getSize()) : callData)
                 .value(ethValue)
                 .apparentValue(ethValue)
                 .code(code)
@@ -474,8 +529,9 @@ public class EvmToolCommand implements Runnable {
         lastTime = stopwatch.elapsed().toNanos();
         stopwatch.reset();
         if (showJsonAlloc && lastLoop) {
+          initialMessageFrame.getSelfDestructs().forEach(updater::deleteAccount);
           updater.commit();
-          WorldState worldState = component.getWorldState();
+          MutableWorldState worldState = component.getWorldState();
           dumpWorldState(worldState, out);
         }
       } while (remainingIters-- > 0);
@@ -486,40 +542,52 @@ public class EvmToolCommand implements Runnable {
     }
   }
 
-  public static void dumpWorldState(final WorldState worldState, final PrintWriter out) {
+  /**
+   * Dumps the current state of the Ethereum world state to the provided PrintWriter. The state
+   * includes account balances, nonces, codes, and storage. The output is in JSON format.
+   *
+   * @param worldState The Ethereum world state to be dumped.
+   * @param out The PrintWriter to which the state is dumped.
+   */
+  public static void dumpWorldState(final MutableWorldState worldState, final PrintWriter out) {
     out.println("{");
     worldState
         .streamAccounts(Bytes32.ZERO, Integer.MAX_VALUE)
         .sorted(Comparator.comparing(o -> o.getAddress().get().toHexString()))
         .forEach(
-            account -> {
-              out.println(
-                  " \"" + account.getAddress().map(Address::toHexString).orElse("-") + "\": {");
+            a -> {
+              var account = worldState.get(a.getAddress().get());
+              out.println(" \"" + account.getAddress().toHexString() + "\": {");
               if (account.getCode() != null && !account.getCode().isEmpty()) {
                 out.println("  \"code\": \"" + account.getCode().toHexString() + "\",");
               }
-              NavigableMap<Bytes32, AccountStorageEntry> storageEntries =
-                  account.storageEntriesFrom(Bytes32.ZERO, Integer.MAX_VALUE);
+              var storageEntries =
+                  account.storageEntriesFrom(Bytes32.ZERO, Integer.MAX_VALUE).values().stream()
+                      .map(
+                          e ->
+                              Map.entry(
+                                  e.getKey().get(),
+                                  account.getStorageValue(UInt256.fromBytes(e.getKey().get()))))
+                      .filter(e -> !e.getValue().isZero())
+                      .sorted(Map.Entry.comparingByKey())
+                      .toList();
               if (!storageEntries.isEmpty()) {
                 out.println("  \"storage\": {");
                 out.println(
                     STORAGE_JOINER.join(
-                        storageEntries.values().stream()
+                        storageEntries.stream()
                             .map(
-                                accountStorageEntry ->
+                                e ->
                                     "   \""
-                                        + accountStorageEntry
-                                            .getKey()
-                                            .map(UInt256::toQuantityHexString)
-                                            .orElse("-")
+                                        + e.getKey().toQuantityHexString()
                                         + "\": \""
-                                        + accountStorageEntry.getValue().toQuantityHexString()
+                                        + e.getValue().toQuantityHexString()
                                         + "\"")
                             .toList()));
                 out.println("  },");
               }
               out.print("  \"balance\": \"" + account.getBalance().toShortHexString() + "\"");
-              if (account.getNonce() > 0) {
+              if (account.getNonce() != 0) {
                 out.println(",");
                 out.println(
                     "  \"nonce\": \""

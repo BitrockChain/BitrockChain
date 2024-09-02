@@ -16,11 +16,28 @@ package org.hyperledger.besu.plugin.services;
 
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.plugin.Unstable;
+import org.hyperledger.besu.plugin.services.storage.DataStorageConfiguration;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 /** Generally useful configuration provided by Besu. */
 public interface BesuConfiguration extends BesuService {
+
+  /**
+   * Get the configured RPC http host.
+   *
+   * @return the configured RPC http host.
+   */
+  Optional<String> getRpcHttpHost();
+
+  /**
+   * Get the configured RPC http port.
+   *
+   * @return the configured RPC http port.
+   */
+  Optional<Integer> getRpcHttpPort();
 
   /**
    * Location of the working directory of the storage in the file system running the client.
@@ -37,12 +54,13 @@ public interface BesuConfiguration extends BesuService {
   Path getDataPath();
 
   /**
-   * Database version. This sets the list of segmentIdentifiers that should be initialized.
+   * Database format. This sets the list of segmentIdentifiers that should be initialized.
    *
-   * @return Database version.
+   * @return Database format.
    */
   @Unstable
-  int getDatabaseVersion();
+  @Deprecated
+  DataStorageFormat getDatabaseFormat();
 
   /**
    * The runtime value of the min gas price
@@ -51,4 +69,12 @@ public interface BesuConfiguration extends BesuService {
    */
   @Unstable
   Wei getMinGasPrice();
+
+  /**
+   * Database storage configuration.
+   *
+   * @return Database storage configuration.
+   */
+  @Unstable
+  DataStorageConfiguration getDataStorageConfiguration();
 }

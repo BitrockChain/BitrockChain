@@ -1,5 +1,5 @@
 /*
- * Copyright Hyperledger Besu Contributors.
+ * Copyright contributors to Hyperledger Besu.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -25,10 +25,10 @@ import org.hyperledger.besu.controller.BesuController;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
-import org.hyperledger.besu.ethereum.trie.bonsai.storage.BonsaiWorldStateKeyValueStorage;
-import org.hyperledger.besu.ethereum.trie.bonsai.trielog.TrieLogPruner;
+import org.hyperledger.besu.ethereum.trie.diffbased.bonsai.storage.BonsaiWorldStateKeyValueStorage;
+import org.hyperledger.besu.ethereum.trie.diffbased.common.trielog.TrieLogPruner;
 import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -49,7 +49,8 @@ import picocli.CommandLine.ParentCommand;
 
 /** The Trie Log subcommand. */
 @Command(
-    name = "x-trie-log",
+    name = "trie-log",
+    aliases = "x-trie-log",
     description = "Manipulate trie logs",
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider.class,
@@ -70,6 +71,9 @@ public class TrieLogSubCommand implements Runnable {
   @SuppressWarnings("unused")
   @CommandLine.Spec
   private CommandLine.Model.CommandSpec spec; // Picocli injects reference to command spec
+
+  /** Default Constructor. */
+  TrieLogSubCommand() {}
 
   @Override
   public void run() {

@@ -12,7 +12,6 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-
 package org.hyperledger.besu.ethereum.api.jsonrpc.methods;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,8 +67,7 @@ public class EthGetBlockByNumberLatestDesyncIntegrationTest {
         InMemoryKeyValueStorageProvider.createInMemoryBlockchain(importer.getGenesisBlock());
     WorldStateArchive state = InMemoryKeyValueStorageProvider.createInMemoryWorldStateArchive();
     importer.getGenesisState().writeStateTo(state.getMutable());
-    ProtocolContext context =
-        new ProtocolContext(chain, state, null, Optional.empty(), new BadBlockManager());
+    ProtocolContext context = new ProtocolContext(chain, state, null, new BadBlockManager());
 
     for (final Block block : importer.getBlocks()) {
       final ProtocolSchedule protocolSchedule = importer.getProtocolSchedule();

@@ -1,5 +1,5 @@
 /*
- * Copyright Hyperledger Besu Contributors.
+ * Copyright contributors to Hyperledger Besu.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -140,14 +140,6 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
    * @return the boolean
    */
   boolean isMiningBeforeMerge();
-
-  /**
-   * Add bad block.
-   *
-   * @param block the block
-   * @param maybeCause the maybe cause
-   */
-  void addBadBlock(final Block block, Optional<Throwable> maybeCause);
 
   /**
    * Is bad block.

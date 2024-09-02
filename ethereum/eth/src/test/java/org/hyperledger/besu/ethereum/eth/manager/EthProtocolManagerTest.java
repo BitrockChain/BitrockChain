@@ -1,5 +1,5 @@
 /*
- * Copyright contributors to Hyperledger Besu
+ * Copyright contributors to Hyperledger Besu.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -36,6 +36,7 @@ import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockchainSetupUtil;
 import org.hyperledger.besu.ethereum.core.Difficulty;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.ProtocolScheduleFixture;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
@@ -71,10 +72,10 @@ import org.hyperledger.besu.ethereum.p2p.rlpx.wire.DefaultMessage;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.MessageData;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.RawMessage;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.messages.DisconnectMessage.DisconnectReason;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 import org.hyperledger.besu.testutil.TestClock;
 
 import java.math.BigInteger;
@@ -256,8 +257,7 @@ public final class EthProtocolManagerTest {
       assertThat(workPeer.isDisconnected()).isTrue();
       assertThat(workPeer.getDisconnectReason()).isPresent();
       assertThat(workPeer.getDisconnectReason())
-          .get()
-          .isEqualTo(DisconnectReason.SUBPROTOCOL_TRIGGERED);
+          .hasValue(DisconnectReason.SUBPROTOCOL_TRIGGERED_POW_DIFFICULTY);
       assertThat(stakePeer.isDisconnected()).isFalse();
     }
   }
@@ -1117,8 +1117,8 @@ public final class EthProtocolManagerTest {
               metricsSystem,
               new SyncState(blockchain, ethManager.ethContext().getEthPeers()),
               TransactionPoolConfiguration.DEFAULT,
-              null,
-              new BlobCache())
+              new BlobCache(),
+              MiningParameters.newDefault())
           .setEnabled();
 
       // Send just a transaction message.

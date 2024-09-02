@@ -79,9 +79,7 @@ public class JsonRpcTestMethodsFactory {
     this.blockchain = createInMemoryBlockchain(importer.getGenesisBlock());
     this.stateArchive = createInMemoryWorldStateArchive();
     this.importer.getGenesisState().writeStateTo(stateArchive.getMutable());
-    this.context =
-        new ProtocolContext(
-            blockchain, stateArchive, null, Optional.empty(), new BadBlockManager());
+    this.context = new ProtocolContext(blockchain, stateArchive, null, new BadBlockManager());
 
     final ProtocolSchedule protocolSchedule = importer.getProtocolSchedule();
     this.synchronizer = mock(Synchronizer.class);
@@ -91,7 +89,9 @@ public class JsonRpcTestMethodsFactory {
       final BlockImporter blockImporter = protocolSpec.getBlockImporter();
       blockImporter.importBlock(context, block, HeaderValidationMode.FULL);
     }
-    this.blockchainQueries = new BlockchainQueries(blockchain, stateArchive);
+    this.blockchainQueries =
+        new BlockchainQueries(
+            protocolSchedule, blockchain, stateArchive, MiningParameters.newDefault());
   }
 
   public JsonRpcTestMethodsFactory(
@@ -103,7 +103,12 @@ public class JsonRpcTestMethodsFactory {
     this.blockchain = blockchain;
     this.stateArchive = stateArchive;
     this.context = context;
-    this.blockchainQueries = new BlockchainQueries(blockchain, stateArchive);
+    this.blockchainQueries =
+        new BlockchainQueries(
+            importer.getProtocolSchedule(),
+            blockchain,
+            stateArchive,
+            MiningParameters.newDefault());
     this.synchronizer = mock(Synchronizer.class);
   }
 
@@ -118,7 +123,12 @@ public class JsonRpcTestMethodsFactory {
     this.stateArchive = stateArchive;
     this.context = context;
     this.synchronizer = synchronizer;
-    this.blockchainQueries = new BlockchainQueries(blockchain, stateArchive);
+    this.blockchainQueries =
+        new BlockchainQueries(
+            importer.getProtocolSchedule(),
+            blockchain,
+            stateArchive,
+            MiningParameters.newDefault());
   }
 
   public BlockchainQueries getBlockchainQueries() {

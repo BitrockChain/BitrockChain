@@ -177,23 +177,33 @@ public class EthPeers {
 
   public boolean registerDisconnect(final PeerConnection connection) {
     final EthPeer peer = peer(connection);
-    return registerDisconnect(peer.getId(), peer, connection);
+    return registerDisconnect(peer, connection);
   }
 
-  private boolean registerDisconnect(
-      final Bytes id, final EthPeer peer, final PeerConnection connection) {
+  private boolean registerDisconnect(final EthPeer peer, final PeerConnection connection) {
     incompleteConnections.invalidate(connection);
     boolean removed = false;
-    if (peer != null && peer.getConnection().equals(connection)) {
+    if (peer == null) {
+      LOG.atTrace()
+          .setMessage("attempt to remove null peer with connection {}")
+          .addArgument(connection)
+          .log();
+      return false;
+    }
+    if (peer.getConnection().equals(connection)) {
+      final Bytes id = peer.getId();
       if (!peerHasIncompleteConnection(id)) {
         removed = completeConnections.remove(id, peer);
         disconnectCallbacks.forEach(callback -> callback.onDisconnect(peer));
         peer.handleDisconnect();
         abortPendingRequestsAssignedToDisconnectedPeers();
         if (peer.getReputation().getScore() > USEFULL_PEER_SCORE_THRESHOLD) {
-          LOG.debug("Disconnected USEFULL peer {}", peer);
+          LOG.atDebug().setMessage("Disconnected USEFULL peer {}").addArgument(peer).log();
         } else {
-          LOG.debug("Disconnected EthPeer {}", peer.getLoggableId());
+          LOG.atDebug()
+              .setMessage("Disconnected EthPeer {}")
+              .addArgument(peer.getLoggableId())
+              .log();
         }
       }
     }
@@ -297,7 +307,7 @@ public class EthPeers {
         .forEach(
             ep -> {
               if (ep.isDisconnected()) {
-                registerDisconnect(ep.getId(), ep, ep.getConnection());
+                registerDisconnect(ep, ep.getConnection());
               }
             });
   }
@@ -311,11 +321,11 @@ public class EthPeers {
   public Stream<EthPeer> streamBestPeers() {
     return streamAvailablePeers()
         .filter(EthPeer::isFullyValidated)
-        .sorted(getBestChainComparator().reversed());
+        .sorted(getBestPeerComparator().reversed());
   }
 
   public Optional<EthPeer> bestPeer() {
-    return streamAvailablePeers().max(getBestChainComparator());
+    return streamAvailablePeers().max(getBestPeerComparator());
   }
 
   public Optional<EthPeer> bestPeerWithHeightEstimate() {
@@ -324,15 +334,15 @@ public class EthPeers {
   }
 
   public Optional<EthPeer> bestPeerMatchingCriteria(final Predicate<EthPeer> matchesCriteria) {
-    return streamAvailablePeers().filter(matchesCriteria).max(getBestChainComparator());
+    return streamAvailablePeers().filter(matchesCriteria).max(getBestPeerComparator());
   }
 
-  public void setBestChainComparator(final Comparator<EthPeer> comparator) {
+  public void setBestPeerComparator(final Comparator<EthPeer> comparator) {
     LOG.info("Updating the default best peer comparator");
     bestPeerComparator = comparator;
   }
 
-  public Comparator<EthPeer> getBestChainComparator() {
+  public Comparator<EthPeer> getBestPeerComparator() {
     return bestPeerComparator;
   }
 
@@ -357,16 +367,28 @@ public class EthPeers {
   public boolean shouldConnect(final Peer peer, final boolean inbound) {
     final Bytes id = peer.getId();
     if (peerCount() >= peerUpperBound && !canExceedPeerLimits(id)) {
+      LOG.atTrace()
+          .setMessage("not connecting to peer {} - too many peers")
+          .addArgument(peer.getLoggableId())
+          .log();
       return false;
     }
     final EthPeer ethPeer = completeConnections.get(id);
     if (ethPeer != null && !ethPeer.isDisconnected()) {
+      LOG.atTrace()
+          .setMessage("not connecting to peer {} - already disconnected")
+          .addArgument(ethPeer.getLoggableId())
+          .log();
       return false;
     }
     final List<PeerConnection> incompleteConnections = getIncompleteConnections(id);
     if (!incompleteConnections.isEmpty()) {
       if (incompleteConnections.stream()
           .anyMatch(c -> !c.isDisconnected() && (!inbound || (inbound && c.inboundInitiated())))) {
+        LOG.atTrace()
+            .setMessage("not connecting to peer {} - new connection already in process")
+            .addArgument(peer.getLoggableId())
+            .log();
         return false;
       }
     }
@@ -375,8 +397,7 @@ public class EthPeers {
 
   public void disconnectWorstUselessPeer() {
     streamAvailablePeers()
-        .sorted(getBestChainComparator())
-        .findFirst()
+        .min(getBestPeerComparator())
         .ifPresent(
             peer -> {
               LOG.atDebug()
@@ -386,7 +407,7 @@ public class EthPeers {
                   .addArgument(this::peerCount)
                   .addArgument(this::getMaxPeers)
                   .log();
-              peer.disconnect(DisconnectMessage.DisconnectReason.USELESS_PEER);
+              peer.disconnect(DisconnectMessage.DisconnectReason.USELESS_PEER_BY_CHAIN_COMPARATOR);
             });
   }
 
@@ -532,10 +553,11 @@ public class EthPeers {
     if (!randomPeerPriority) {
       // Disconnect if too many peers
       if (!canExceedPeerLimits(id) && peerCount() >= peerUpperBound) {
-        LOG.trace(
-            "Too many peers. Disconnect connection: {}, max connections {}",
-            connection,
-            peerUpperBound);
+        LOG.atTrace()
+            .setMessage("Too many peers. Disconnect connection: {}, max connections {}")
+            .addArgument(connection)
+            .addArgument(peerUpperBound)
+            .log();
         connection.disconnect(DisconnectMessage.DisconnectReason.TOO_MANY_PEERS);
         return false;
       }
@@ -543,18 +565,28 @@ public class EthPeers {
       if (connection.inboundInitiated()
           && !canExceedPeerLimits(id)
           && remoteConnectionLimitReached()) {
-        LOG.trace(
-            "Too many remotely-initiated connections. Disconnect incoming connection: {}, maxRemote={}",
-            connection,
-            maxRemotelyInitiatedConnections);
+        LOG.atTrace()
+            .setMessage(
+                "Too many remotely-initiated connections. Disconnect incoming connection: {}, maxRemote={}")
+            .addArgument(connection)
+            .addArgument(maxRemotelyInitiatedConnections)
+            .log();
         connection.disconnect(DisconnectMessage.DisconnectReason.TOO_MANY_PEERS);
         return false;
       }
       final boolean added = (completeConnections.putIfAbsent(id, peer) == null);
       if (added) {
-        LOG.trace("Added peer {} with connection {} to completeConnections", id, connection);
+        LOG.atTrace()
+            .setMessage("Added peer {} with connection {} to completeConnections")
+            .addArgument(id)
+            .addArgument(connection)
+            .log();
       } else {
-        LOG.trace("Did not add peer {} with connection {} to completeConnections", id, connection);
+        LOG.atTrace()
+            .setMessage("Did not add peer {} with connection {} to completeConnections")
+            .addArgument(id)
+            .addArgument(connection)
+            .log();
       }
       return added;
     } else {

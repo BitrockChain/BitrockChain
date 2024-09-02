@@ -34,9 +34,9 @@ import org.hyperledger.besu.ethereum.eth.manager.RespondingEthPeer.Responder;
 import org.hyperledger.besu.ethereum.eth.peervalidation.PeerValidator;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 import org.hyperledger.besu.util.ExceptionUtils;
 
 import java.util.Optional;
@@ -288,7 +288,7 @@ public class PivotBlockRetrieverTest {
 
     final CompletableFuture<FastSyncState> future = pivotBlockRetriever.downloadPivotBlockHeader();
     peerA.respond(responder);
-    peerB.respondTimes(emptyResponder, 2);
+    peerB.respondTimes(emptyResponder, 3);
 
     // PeerA should have responded, while peerB is being retried, peerC shouldn't have been queried
     // yet

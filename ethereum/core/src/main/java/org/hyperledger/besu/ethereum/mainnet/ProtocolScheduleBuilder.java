@@ -16,12 +16,15 @@ package org.hyperledger.besu.ethereum.mainnet;
 
 import org.hyperledger.besu.config.GenesisConfigOptions;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionValidator;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 
 import java.math.BigInteger;
+import java.util.NavigableMap;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -40,9 +43,8 @@ public class ProtocolScheduleBuilder {
   private final PrivacyParameters privacyParameters;
   private final boolean isRevertReasonEnabled;
   private final EvmConfiguration evmConfiguration;
+  private final MiningParameters miningParameters;
   private final BadBlockManager badBlockManager;
-
-  private DefaultProtocolSchedule protocolSchedule;
 
   public ProtocolScheduleBuilder(
       final GenesisConfigOptions config,
@@ -51,6 +53,7 @@ public class ProtocolScheduleBuilder {
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
+      final MiningParameters miningParameters,
       final BadBlockManager badBlockManager) {
     this(
         config,
@@ -59,6 +62,7 @@ public class ProtocolScheduleBuilder {
         privacyParameters,
         isRevertReasonEnabled,
         evmConfiguration,
+        miningParameters,
         badBlockManager);
   }
 
@@ -68,6 +72,7 @@ public class ProtocolScheduleBuilder {
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
+      final MiningParameters miningParameters,
       final BadBlockManager badBlockManager) {
     this(
         config,
@@ -76,6 +81,7 @@ public class ProtocolScheduleBuilder {
         privacyParameters,
         isRevertReasonEnabled,
         evmConfiguration,
+        miningParameters,
         badBlockManager);
   }
 
@@ -86,6 +92,7 @@ public class ProtocolScheduleBuilder {
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
+      final MiningParameters miningParameters,
       final BadBlockManager badBlockManager) {
     this.config = config;
     this.protocolSpecAdapters = protocolSpecAdapters;
@@ -93,12 +100,13 @@ public class ProtocolScheduleBuilder {
     this.isRevertReasonEnabled = isRevertReasonEnabled;
     this.evmConfiguration = evmConfiguration;
     this.defaultChainId = defaultChainId;
+    this.miningParameters = miningParameters;
     this.badBlockManager = badBlockManager;
   }
 
   public ProtocolSchedule createProtocolSchedule() {
     final Optional<BigInteger> chainId = config.getChainId().or(() -> defaultChainId);
-    protocolSchedule = new DefaultProtocolSchedule(chainId);
+    DefaultProtocolSchedule protocolSchedule = new DefaultProtocolSchedule(chainId);
     initSchedule(protocolSchedule, chainId);
     return protocolSchedule;
   }
@@ -109,17 +117,18 @@ public class ProtocolScheduleBuilder {
     final MainnetProtocolSpecFactory specFactory =
         new MainnetProtocolSpecFactory(
             chainId,
-            config.getContractSizeLimit(),
-            config.getEvmStackSize(),
             isRevertReasonEnabled,
             config.getEcip1017EraRounds(),
-            evmConfiguration);
+            evmConfiguration.overrides(
+                config.getContractSizeLimit(), OptionalInt.empty(), config.getEvmStackSize()),
+            miningParameters);
 
     validateForkOrdering();
 
-    final TreeMap<Long, BuilderMapEntry> builders = buildMilestoneMap(specFactory);
+    final NavigableMap<Long, BuilderMapEntry> builders = buildMilestoneMap(specFactory);
 
-    // At this stage, all milestones are flagged with correct modifier, but ProtocolSpecs must be
+    // At this stage, all milestones are flagged with the correct modifier, but ProtocolSpecs must
+    // be
     // inserted _AT_ the modifier block entry.
     if (!builders.isEmpty()) {
       protocolSpecAdapters.stream()
@@ -133,10 +142,7 @@ public class ProtocolScheduleBuilder {
                 builders.put(
                     modifierBlock,
                     new BuilderMapEntry(
-                        parent.milestoneType,
-                        modifierBlock,
-                        parent.getBuilder(),
-                        entry.getValue()));
+                        parent.milestoneType, modifierBlock, parent.builder(), entry.getValue()));
               });
     }
 
@@ -148,8 +154,8 @@ public class ProtocolScheduleBuilder {
                 addProtocolSpec(
                     protocolSchedule,
                     e.milestoneType,
-                    e.getBlockIdentifier(),
-                    e.getBuilder(),
+                    e.blockIdentifier(),
+                    e.builder(),
                     e.modifier));
 
     // NOTE: It is assumed that Daofork blocks will not be used for private networks
@@ -163,8 +169,8 @@ public class ProtocolScheduleBuilder {
               final ProtocolSpec originalProtocolSpec =
                   getProtocolSpec(
                       protocolSchedule,
-                      previousSpecBuilder.getBuilder(),
-                      previousSpecBuilder.getModifier());
+                      previousSpecBuilder.builder(),
+                      previousSpecBuilder.modifier());
               addProtocolSpec(
                   protocolSchedule,
                   BuilderMapEntry.MilestoneType.BLOCK_NUMBER,
@@ -191,14 +197,13 @@ public class ProtocolScheduleBuilder {
               final ProtocolSpec originalProtocolSpec =
                   getProtocolSpec(
                       protocolSchedule,
-                      previousSpecBuilder.getBuilder(),
-                      previousSpecBuilder.getModifier());
+                      previousSpecBuilder.builder(),
+                      previousSpecBuilder.modifier());
               addProtocolSpec(
                   protocolSchedule,
                   BuilderMapEntry.MilestoneType.BLOCK_NUMBER,
                   classicBlockNumber,
-                  ClassicProtocolSpecs.classicRecoveryInitDefinition(
-                      config.getContractSizeLimit(), config.getEvmStackSize(), evmConfiguration),
+                  ClassicProtocolSpecs.classicRecoveryInitDefinition(evmConfiguration),
                   Function.identity());
               protocolSchedule.putBlockNumberMilestone(
                   classicBlockNumber + 1, originalProtocolSpec);
@@ -241,7 +246,9 @@ public class ProtocolScheduleBuilder {
     // Begin timestamp forks
     lastForkBlock = validateForkOrder("Shanghai", config.getShanghaiTime(), lastForkBlock);
     lastForkBlock = validateForkOrder("Cancun", config.getCancunTime(), lastForkBlock);
+    lastForkBlock = validateForkOrder("CancunEOF", config.getCancunEOFTime(), lastForkBlock);
     lastForkBlock = validateForkOrder("Prague", config.getPragueTime(), lastForkBlock);
+    lastForkBlock = validateForkOrder("PragueEOF", config.getPragueEOFTime(), lastForkBlock);
     lastForkBlock = validateForkOrder("FutureEips", config.getFutureEipsTime(), lastForkBlock);
     lastForkBlock =
         validateForkOrder("ExperimentalEips", config.getExperimentalEipsTime(), lastForkBlock);
@@ -281,13 +288,13 @@ public class ProtocolScheduleBuilder {
     return referenceForkBlock;
   }
 
-  private TreeMap<Long, BuilderMapEntry> buildMilestoneMap(
+  private NavigableMap<Long, BuilderMapEntry> buildMilestoneMap(
       final MainnetProtocolSpecFactory specFactory) {
     return createMilestones(specFactory)
         .flatMap(Optional::stream)
         .collect(
             Collectors.toMap(
-                BuilderMapEntry::getBlockIdentifier,
+                BuilderMapEntry::blockIdentifier,
                 b -> b,
                 (existing, replacement) -> replacement,
                 TreeMap::new));
@@ -320,7 +327,9 @@ public class ProtocolScheduleBuilder {
         // Timestamp Forks
         timestampMilestone(config.getShanghaiTime(), specFactory.shanghaiDefinition(config)),
         timestampMilestone(config.getCancunTime(), specFactory.cancunDefinition(config)),
+        timestampMilestone(config.getCancunEOFTime(), specFactory.cancunEOFDefinition(config)),
         timestampMilestone(config.getPragueTime(), specFactory.pragueDefinition(config)),
+        timestampMilestone(config.getPragueEOFTime(), specFactory.pragueEOFDefinition(config)),
         timestampMilestone(config.getFutureEipsTime(), specFactory.futureEipsDefinition(config)),
         timestampMilestone(
             config.getExperimentalEipsTime(), specFactory.experimentalEipsDefinition(config)),
@@ -386,46 +395,26 @@ public class ProtocolScheduleBuilder {
       final Function<ProtocolSpecBuilder, ProtocolSpecBuilder> modifier) {
 
     switch (milestoneType) {
-      case BLOCK_NUMBER -> protocolSchedule.putBlockNumberMilestone(
-          blockNumberOrTimestamp, getProtocolSpec(protocolSchedule, definition, modifier));
-      case TIMESTAMP -> protocolSchedule.putTimestampMilestone(
-          blockNumberOrTimestamp, getProtocolSpec(protocolSchedule, definition, modifier));
-      default -> throw new IllegalStateException(
-          "Unexpected milestoneType: "
-              + milestoneType
-              + " for milestone: "
-              + blockNumberOrTimestamp);
+      case BLOCK_NUMBER ->
+          protocolSchedule.putBlockNumberMilestone(
+              blockNumberOrTimestamp, getProtocolSpec(protocolSchedule, definition, modifier));
+      case TIMESTAMP ->
+          protocolSchedule.putTimestampMilestone(
+              blockNumberOrTimestamp, getProtocolSpec(protocolSchedule, definition, modifier));
+      default ->
+          throw new IllegalStateException(
+              "Unexpected milestoneType: "
+                  + milestoneType
+                  + " for milestone: "
+                  + blockNumberOrTimestamp);
     }
   }
 
-  private static class BuilderMapEntry {
-    private final MilestoneType milestoneType;
-    private final long blockIdentifier;
-    private final ProtocolSpecBuilder builder;
-    private final Function<ProtocolSpecBuilder, ProtocolSpecBuilder> modifier;
-
-    public BuilderMapEntry(
-        final MilestoneType milestoneType,
-        final long blockIdentifier,
-        final ProtocolSpecBuilder builder,
-        final Function<ProtocolSpecBuilder, ProtocolSpecBuilder> modifier) {
-      this.milestoneType = milestoneType;
-      this.blockIdentifier = blockIdentifier;
-      this.builder = builder;
-      this.modifier = modifier;
-    }
-
-    public long getBlockIdentifier() {
-      return blockIdentifier;
-    }
-
-    public ProtocolSpecBuilder getBuilder() {
-      return builder;
-    }
-
-    public Function<ProtocolSpecBuilder, ProtocolSpecBuilder> getModifier() {
-      return modifier;
-    }
+  private record BuilderMapEntry(
+      ProtocolScheduleBuilder.BuilderMapEntry.MilestoneType milestoneType,
+      long blockIdentifier,
+      ProtocolSpecBuilder builder,
+      Function<ProtocolSpecBuilder, ProtocolSpecBuilder> modifier) {
 
     private enum MilestoneType {
       BLOCK_NUMBER,

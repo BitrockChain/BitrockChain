@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 ConsenSys AG.
+ * Copyright contributors to Hyperledger Besu.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -104,7 +104,6 @@ public class ProposalValidatorTest {
             worldStateArchive,
             setupContextWithBftExtraDataEncoder(
                 QbftContext.class, emptyList(), bftExtraDataEncoder),
-            Optional.empty(),
             new BadBlockManager());
 
     // typically tests require the blockValidation to be successful
@@ -112,7 +111,8 @@ public class ProposalValidatorTest {
             eq(protocolContext),
             any(),
             eq(HeaderValidationMode.LIGHT),
-            eq(HeaderValidationMode.FULL)))
+            eq(HeaderValidationMode.FULL),
+            eq(false)))
         .thenReturn(new BlockProcessingResult(Optional.empty()));
 
     when(protocolSchedule.getByBlockHeader(any())).thenReturn(protocolSpec);
@@ -169,7 +169,8 @@ public class ProposalValidatorTest {
             eq(protocolContext),
             any(),
             eq(HeaderValidationMode.LIGHT),
-            eq(HeaderValidationMode.FULL)))
+            eq(HeaderValidationMode.FULL),
+            eq(false)))
         .thenReturn(new BlockProcessingResult("Failed"));
 
     assertThat(roundItem.messageValidator.validate(proposal)).isFalse();
