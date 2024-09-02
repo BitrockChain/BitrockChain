@@ -6,6 +6,7 @@
  [![Discord](https://img.shields.io/discord/905194001349627914?logo=Hyperledger&style=plastic)](https://discord.gg/hyperledger)
  [![Twitter Follow](https://img.shields.io/twitter/follow/HyperledgerBesu)](https://twitter.com/HyperledgerBesu)
 
+<<<<<<< HEAD
 [Download](https://github.com/hyperledger/besu/releases)
 
 Besu is an Apache 2.0 licensed, MainNet compatible, Ethereum client written in Java.
@@ -37,8 +38,28 @@ To install the Besu binary, follow [these instructions](https://besu.hyperledger
 * [Coding Conventions](https://wiki.hyperledger.org/display/BESU/Coding+Conventions)
 * [Command Line Interface (CLI) Style Guide](https://wiki.hyperledger.org/display/BESU/Besu+CLI+Style+Guide)
 * [Besu User Documentation] for running and using Besu
+=======
+![logo](https://i.ibb.co/G338pWq/frame-png-2-1.png)
+# Bitrock chain
+
+Stealth launched in July of 2023 as a PoA Ethereum side chain with a fully circulating supply, Bitrock boasts an ultra-low cost trading experience coupled with a 1 second block time. Offering the attractive combination of high accessibility, a vibrant ecosystem (including a stable coin & token builder), a robust & secure infrastructure, and numerous key integrations & listings, Bitrock has little to no barriers to entry - positioning it as a favored choice for hosting any type of project or launch.
+
+Bitrock's native official DEX, Rockswap, will soon support transactions across 10+ chains, with cross-chain integration in its final stages. Upon completion, cryptocurrencies may be traded between other native chains and the Bitrock chain without the need to use DEXs native to those chains, hold native chain tokens, or pay gas fees in those native tokens. All gas would be equalized and paid in native Bitrock.
 
 
+## Quicklink
+
+
+- [Documentation](https://docs.bit-rock.io)
+- [Website](https://bit-rock.io)
+- [X (Twitter)](https://twitter.com/bitrockchain)
+- [Community](https://t.me/Bitrockchain)
+- [Incorporation Certificate](https://cutt.ly/uw6zS3Av)
+>>>>>>> f433a72f99e18d89a21d09ca16926d7d1ace9fd7
+
+## Chain Information
+
+<<<<<<< HEAD
 ### Development
 
 Instructions for how to get started with developing on the Besu codebase. Please also read the
@@ -48,8 +69,25 @@ Instructions for how to get started with developing on the Besu codebase. Please
 * [Running Developer Builds](https://wiki.hyperledger.org/display/BESU/Building+from+source#running-developer-builds)
 * [Code Coverage](https://wiki.hyperledger.org/display/BESU/Code+coverage)
 * [Logging](https://wiki.hyperledger.org/display/BESU/Logging) or the [Documentation's Logging section](https://besu.hyperledger.org/public-networks/how-to/monitor/logging)
+=======
+Mainnet
+```bash
+RPC URL = https://brockrpc.io
+Chain ID = 7171
+Bridge = Bitrock Bridge
+Explorer = https://explorer.bit-rock.io
+```
+>>>>>>> f433a72f99e18d89a21d09ca16926d7d1ace9fd7
 
+Testnet
+```bash
+RPC URL = https://testnet.bit-rock.io
+Chain ID = 7771
+Symbol = BROCK
+Explorer = https://testnetscan.bit-rock.io
+```
 
+<<<<<<< HEAD
 ## Release Notes
 
 [Release Notes](CHANGELOG.md)
@@ -70,3 +108,7 @@ and <a href="https://www.yourkit.com/youmonitor/">YourKit YouMonitor</a>.
 [Besu User Documentation]: https://besu.hyperledger.org
 [Besu channel on Hyperledger Discord]: https://discord.gg/hyperledger
 [Contributing Guidelines]: CONTRIBUTING.md
+=======
+- [Chainlist](https://chainlist.org/chain/7171)
+- [Genesis](https://github.com/BitrockChain/genesis)
+>>>>>>> f433a72f99e18d89a21d09ca16926d7d1ace9fd7
