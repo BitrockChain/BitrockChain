@@ -19,7 +19,7 @@ Mainnet
 ```bash
 RPC URL = https://brockrpc.io
 Chain ID = 7171
-Bridge = [Bitrock Bridge](https://bridge.bit-rock.io/)
+Bridge = https://bridge.bit-rock.io
 Explorer = https://explorer.bit-rock.io | https://brockscan.io
 ```
 
