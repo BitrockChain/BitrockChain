@@ -17,10 +17,10 @@ Bitrock's native official DEX, Rockswap also supports direct multichain transact
 
 Mainnet
 ```bash
-RPC URL = https://brockrpc.io
+RPC URL = https://brockrpc.io 
 Chain ID = 7171
 Bridge = https://bridge.bit-rock.io
-Explorer = https://explorer.bit-rock.io | https://brockscan.io
+Explorer = https://explorer.bit-rock.io || https://brockscan.io
 ```
 
 Testnet
